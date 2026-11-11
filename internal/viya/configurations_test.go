@@ -3,24 +3,23 @@ package viya_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/jacoblamarche/terraform-provider-viya/internal/viya"
 	"github.com/jacoblamarche/terraform-provider-viya/internal/viyamock"
 )
 
-const loggingDefinition = "logging.level"
+const (
+	loggingDefinition = "logging.level"
+	loggingMediaType  = "application/vnd.sas.configuration.config.logging.level+json;version=1"
+)
 
-func TestConfigurationMediaType(t *testing.T) {
+func TestConfiguration_definitionName(t *testing.T) {
 	t.Parallel()
 
-	mediaType := viya.ConfigurationMediaType(loggingDefinition, 2)
-	if want := "application/vnd.sas.configuration.config.logging.level+json;version=2"; mediaType != want {
-		t.Fatalf("ConfigurationMediaType = %q, want %q", mediaType, want)
-	}
-
 	tests := map[string]string{
-		mediaType: loggingDefinition,
+		loggingMediaType: loggingDefinition,
 		"application/vnd.sas.configuration.config.sas.compute.server+json": "sas.compute.server",
 		"application/json":                    "",
 		"application/vnd.sas.collection+json": "",
@@ -100,14 +99,14 @@ func TestConfigurations_lifecycle(t *testing.T) {
 	client, _ := newTestClient(t)
 	ctx := context.Background()
 
-	definition, err := client.GetConfigurationDefinition(ctx, loggingDefinition)
+	mediaType, err := client.DefinitionMediaType(ctx, loggingDefinition)
 	if err != nil {
-		t.Fatalf("GetConfigurationDefinition: %v", err)
+		t.Fatalf("DefinitionMediaType: %v", err)
 	}
 
 	created, err := client.CreateConfiguration(ctx, viya.Configuration{
 		Metadata: viya.ConfigurationMetadata{
-			MediaType: viya.ConfigurationMediaType(definition.Name, definition.Version),
+			MediaType: mediaType,
 			Services:  []string{"identities"},
 		},
 		Properties: map[string]any{"name": "com.sas.test", "level": "DEBUG"},
@@ -150,6 +149,17 @@ func TestConfigurations_lifecycle(t *testing.T) {
 		t.Errorf("UpdateConfiguration with a stale ETag: error = %v, want precondition failed", err)
 	}
 
+	// Without an entity tag, Viya answers with an empty 204: the instance
+	// as sent must come back, with its ID.
+	read.ETag = ""
+	unconditional, err := client.UpdateConfiguration(ctx, *read)
+	if err != nil {
+		t.Fatalf("unconditional UpdateConfiguration: %v", err)
+	}
+	if unconditional.ID != created.ID || unconditional.Properties["level"] != "TRACE" {
+		t.Errorf("unconditional UpdateConfiguration = %+v, want the instance as sent", unconditional)
+	}
+
 	if err := client.DeleteConfiguration(ctx, created.ID); err != nil {
 		t.Fatalf("DeleteConfiguration: %v", err)
 	}
@@ -180,11 +190,24 @@ func TestConfigurations_listFollowsPagination(t *testing.T) {
 	}
 }
 
-func TestConfigurations_unknownDefinition(t *testing.T) {
+func TestDefinitionMediaType(t *testing.T) {
 	t.Parallel()
 	client, _ := newTestClient(t)
+	ctx := context.Background()
 
-	if _, err := client.GetConfigurationDefinition(context.Background(), "no.such.definition"); !viya.IsNotFound(err) {
-		t.Errorf("GetConfigurationDefinition: error = %v, want not found", err)
+	mediaType, err := client.DefinitionMediaType(ctx, loggingDefinition)
+	if err != nil {
+		t.Fatalf("DefinitionMediaType: %v", err)
+	}
+	if mediaType != loggingMediaType {
+		t.Errorf("DefinitionMediaType = %q, want %q", mediaType, loggingMediaType)
+	}
+
+	// A name that is a prefix of another must not match it.
+	if _, err := client.DefinitionMediaType(ctx, "logging"); !errors.Is(err, viya.ErrDefinitionNotFound) {
+		t.Errorf("DefinitionMediaType for a prefix: error = %v, want ErrDefinitionNotFound", err)
+	}
+	if _, err := client.DefinitionMediaType(ctx, "no.such.definition"); !errors.Is(err, viya.ErrDefinitionNotFound) {
+		t.Errorf("DefinitionMediaType for an unknown name: error = %v, want ErrDefinitionNotFound", err)
 	}
 }

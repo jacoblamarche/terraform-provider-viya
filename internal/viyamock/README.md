@@ -12,57 +12,61 @@ creates can be read back, updated, imported and deleted.
 | --- | --- | --- |
 | SAS Logon | `POST /SASLogon/oauth/token` | `client_credentials` and `password` grants; client authenticated with HTTP Basic or form fields |
 | Identities | `POST /identities/groups` | |
-| Identities | `GET`, `PUT`, `DELETE /identities/groups/{id}` | `ETag` on reads and writes; `If-Match` on `PUT` |
-| Configuration | `GET /configuration/definitions/{name}` | Name, version and properties of a definition |
+| Identities | `GET`, `PUT`, `DELETE /identities/groups/{id}` | No entity tag; `If-Match` is ignored |
+| Configuration | `GET /configuration/definitions` | Every definition, with a link that names the media type of its instances; `filter` is ignored |
 | Configuration | `GET`, `POST /configuration/configurations` | Filtered with `definitionName`; paginated with `start` and `limit` |
-| Configuration | `GET`, `PUT`, `DELETE /configuration/configurations/{id}` | The `Content-Type` names the definition; secrets are masked on reads |
+| Configuration | `GET`, `PUT`, `DELETE /configuration/configurations/{id}` | The `Content-Type` names the definition; weak entity tags |
 
 The fake starts with three configuration definitions and the default instances
 that services would have written: `sas.compute.server` (three named instances),
-`sas.identities.providers.ldap.connection` (one instance, with a secret
-`password`) and `logging.level` (no instance).
+`sas.identities.providers.ldap.connection` (one instance, with a `password`)
+and `logging.level` (no instance).
 
 Conventions it reproduces:
 
 - Bearer tokens that expire; a missing, unknown or expired token gets HTTP 401.
-- Entity tags: `PUT` with a stale `If-Match` gets HTTP 412.
 - SAS media types (`application/vnd.sas.identity.group+json`,
   `application/vnd.sas.collection+json`, `application/vnd.sas.error+json`).
 - Collections with `start`, `limit`, `count`, `items` and `links`.
 
-Anything else gets HTTP 404, and query parameters that are not implemented
-(`filter`, `sortBy`) get HTTP 400. The fake fails loudly rather than ignore a
-request it does not understand, so that a test cannot pass by accident.
+Anything else gets HTTP 404, and query parameters that are not implemented get
+HTTP 400. The fake fails loudly rather than ignore a request it does not
+understand, so that a test cannot pass by accident. The one exception is
+`filter` on the definition list, which SAS Viya ignores too.
 
 ## How its behaviour was established
 
 A fake is only useful if it behaves like the real service. Each behaviour
-below is marked with where it comes from.
+below is marked as verified against SAS Viya, documented by SAS, or still to
+verify.
 
-| Behaviour | Source | Confidence |
-| --- | --- | --- |
-| Token endpoint: grants, parameters, response fields | [SAS Logon OpenAPI specification](https://developer.sas.com/rest-apis/SASLogon) | Documented |
-| Group paths and the `id`/`name`/`description`/`state` body | [pyviyatools](https://github.com/sassoftware/pyviyatools), SAS's own administration scripts | Observed in SAS code |
-| Media types, `ETag`/`If-Match` on groups, status codes 409/412/428, error body fields | Conventions shared by Viya services; not in a published specification for this endpoint | **To verify against a real deployment** |
-| Configuration paths, the `definitionName` filter, properties as top-level fields, `metadata.mediaType`/`services`/`isDefault`, the definition-specific `Content-Type` on `PUT` | [pyviyatools](https://github.com/sassoftware/pyviyatools) | Observed in SAS code |
-| Meaning of `isDefault` (a service overwrites a default instance at startup) | [SAS blog on saving and reloading configuration](https://blogs.sas.com/content/sgf/2018/06/08/saving-and-reloading-sas-viya-configuration) | Documented |
-| `POST` to create one instance, `GET /configuration/definitions/{name}` and its `version`, `ETag`/`If-Match` on configurations, a `PUT` that replaces every property | Recollection of the Configuration API; no published specification | **To verify against a real deployment** |
-| Secrets returned masked, and a masked value written back leaving the secret unchanged; the mask itself (`********`) | Inferred from how SAS Environment Manager edits such instances | **To verify against a real deployment** |
+| Behaviour | Status |
+| --- | --- |
+| Token endpoint: grants, parameters, response fields ([SAS Logon specification](https://developer.sas.com/rest-apis/SASLogon)) | Documented |
+| Groups: `POST` → 201 with `Location`; `GET` → 200 with `application/vnd.sas.identity.group+json`; `PUT` → 200; `POST` of an existing ID → 409; `DELETE` → 204, then `GET` → 404 | Verified |
+| Groups: no `ETag` and no `Last-Modified`, on creation or on read | Verified |
+| Groups: the `id`/`name`/`description`/`state` body | Verified |
+| Definitions: `GET /configuration/definitions/{name}` → 404; the list ignores `filter`; a link of each definition names its instance media type, with its version | Verified |
+| Configurations: `POST` of a single instance → 201 with a weak `ETag` and `Location` | Verified |
+| Configurations: `PUT` with the weak `ETag` in `If-Match` → 200 with the instance and a new `ETag`; a stale one → 412; no `If-Match` → 204 without body | Verified |
+| Configurations: an instance read and sent back as is, with `id`, `metadata` and `links`, is accepted | Verified |
+| Configurations: the password of the LDAP connection is returned in clear text | Verified |
+| Configurations: `DELETE` → 204, then `GET` → 404 | Verified |
+| Configurations: properties as top-level fields, `metadata.mediaType`/`services`/`isDefault`, the `definitionName` filter | Verified |
+| Meaning of `isDefault`: a service overwrites a default instance at startup ([SAS blog](https://blogs.sas.com/content/sgf/2018/06/08/saving-and-reloading-sas-viya-configuration)) | Documented |
+| Error body fields, retries on 429 and 503 | **To verify** |
 
 Neither the custom group endpoints (`/identities/groups`) nor the Configuration
 service are described by an OpenAPI specification that SAS currently publishes.
-Until the acceptance tests have run against a real deployment, treat the rows
-marked "to verify" as assumptions.
 
-The secrets row matters most. The provider updates an instance by reading it,
-changing the managed properties and writing all of it back. If a real
-deployment did not treat a masked secret as unchanged, an update would replace
-every secret that Terraform does not manage with its mask. Check this on a
-non-production deployment before managing an instance that holds a secret.
+Only the LDAP connection is verified to return its password in clear text. If
+another definition returned a secret masked, the provider would write the mask
+back when it updates that instance, and report a difference on every plan for a
+secret in `sensitive_properties`.
 
-By default the fake checks `If-Match` only when the header is present. The
-`WithRequireIfMatch` option makes it mandatory (HTTP 428), which is the
-stricter of the two plausible behaviours; the provider is tested against both.
+SAS Viya accepts a configuration update without `If-Match`. The
+`WithRequireIfMatch` option makes the fake refuse it (HTTP 428), to prove that
+the provider always sends the precondition.
 
 ## Using it in a test
 
@@ -83,7 +87,7 @@ Tests can also reach behind the API:
 - `RemoveGroup` deletes a group as if someone had done it outside Terraform.
 - `AddConfiguration`, `SetConfigurationProperty` and `RemoveConfiguration`
   change configuration instances behind the API; `Configuration` and
-  `FindConfigurations` read them with their secrets unmasked.
+  `FindConfigurations` read them.
 - `Requests` returns the requests received, to assert on what the client sent.
 
 ## Keeping it honest

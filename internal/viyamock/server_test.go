@@ -197,8 +197,10 @@ func TestGroups_representation(t *testing.T) {
 	if got := resp.Header.Get("Location"); got != "/identities/groups/g1" {
 		t.Errorf("Location = %q, want /identities/groups/g1", got)
 	}
-	if resp.Header.Get("ETag") == "" || resp.Header.Get("Last-Modified") == "" {
-		t.Error("ETag or Last-Modified header is missing")
+	// The Identities service sends neither an entity tag nor a
+	// modification date for groups.
+	if resp.Header.Get("ETag") != "" || resp.Header.Get("Last-Modified") != "" {
+		t.Error("the group response has an ETag or Last-Modified header")
 	}
 	if group.ID != "g1" || group.State != "active" || group.ProviderID != "local" {
 		t.Errorf("group = %+v, want defaults applied", group)
@@ -233,41 +235,22 @@ func TestGroups_validation(t *testing.T) {
 	}
 }
 
-func TestGroups_updatePreconditions(t *testing.T) {
+func TestGroups_updateIgnoresPreconditions(t *testing.T) {
 	t.Parallel()
+	_, server := start(t)
+	bearer := token(t, server.URL)
 
-	tests := map[string]struct {
-		opts    []viyamock.Option
-		ifMatch func(etag string) string
-		want    int
-	}{
-		"matching If-Match":                  {ifMatch: func(etag string) string { return etag }, want: http.StatusOK},
-		"wildcard If-Match":                  {ifMatch: func(string) string { return "*" }, want: http.StatusOK},
-		"stale If-Match":                     {ifMatch: func(string) string { return `"stale"` }, want: http.StatusPreconditionFailed},
-		"no If-Match, lenient (the default)": {ifMatch: func(string) string { return "" }, want: http.StatusOK},
-		"no If-Match, strict": {
-			opts:    []viyamock.Option{viyamock.WithRequireIfMatch()},
-			ifMatch: func(string) string { return "" },
-			want:    http.StatusPreconditionRequired,
-		},
-	}
-	for name, tc := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			_, server := start(t, tc.opts...)
-			bearer := token(t, server.URL)
+	call(t, http.MethodPost, server.URL+"/identities/groups", bearer, `{"id":"g","name":"G"}`, nil, nil)
 
-			created := call(t, http.MethodPost, server.URL+"/identities/groups", bearer, `{"id":"g","name":"G"}`, nil, nil)
-			header := http.Header{}
-			if value := tc.ifMatch(created.Header.Get("ETag")); value != "" {
-				header.Set("If-Match", value)
-			}
-
-			resp := call(t, http.MethodPut, server.URL+"/identities/groups/g", bearer, `{"id":"g","name":"Renamed"}`, header, nil)
-			if resp.StatusCode != tc.want {
-				t.Errorf("status = %d, want %d", resp.StatusCode, tc.want)
-			}
-		})
+	for _, ifMatch := range []string{"", `"stale"`} {
+		header := http.Header{}
+		if ifMatch != "" {
+			header.Set("If-Match", ifMatch)
+		}
+		resp := call(t, http.MethodPut, server.URL+"/identities/groups/g", bearer, `{"id":"g","name":"Renamed"}`, header, nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("If-Match %q: status = %d, want 200", ifMatch, resp.StatusCode)
+		}
 	}
 }
 
@@ -326,49 +309,90 @@ func ldapConnection(t *testing.T, mock *viyamock.Server) string {
 	return found[0].ID
 }
 
-func TestConfigurations_secretsAreMasked(t *testing.T) {
+func TestConfigurations_readAndUpdate(t *testing.T) {
 	t.Parallel()
 	mock, server := start(t)
 	bearer := token(t, server.URL)
-	target := server.URL + "/configuration/configurations/" + ldapConnection(t, mock)
+	id := ldapConnection(t, mock)
+	target := server.URL + "/configuration/configurations/" + id
+	header := func(ifMatch string) http.Header {
+		h := http.Header{"Content-Type": {ldapMediaType}}
+		if ifMatch != "" {
+			h.Set("If-Match", ifMatch)
+		}
+		return h
+	}
 
 	var read map[string]any
 	resp := call(t, http.MethodGet, target, bearer, "", nil, &read)
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("ETag") == "" {
-		t.Fatalf("status = %d, ETag = %q", resp.StatusCode, resp.Header.Get("ETag"))
+	etag := resp.Header.Get("ETag")
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(etag, `W/"`) {
+		t.Fatalf("status = %d, ETag = %q; want 200 and a weak entity tag", resp.StatusCode, etag)
 	}
-	if read["password"] != viyamock.SecretMask {
-		t.Fatalf("password is returned as %q, want it masked", read["password"])
-	}
-	if read["host"] != "ldap.example.com" {
-		t.Errorf("host = %q, want it in clear", read["host"])
+	// SAS Viya returns passwords in clear text.
+	if read["password"] != "initial-ldap-password" {
+		t.Errorf("password = %q, want it in clear text", read["password"])
 	}
 
-	// Writing the masked value back leaves the stored secret unchanged.
+	// The instance as read, sent back with its own entity tag.
 	read["host"] = "ldap2.example.com"
 	body, err := json.Marshal(read)
 	if err != nil {
 		t.Fatal(err)
 	}
-	header := http.Header{"Content-Type": {ldapMediaType}}
-	if resp := call(t, http.MethodPut, target, bearer, string(body), header, nil); resp.StatusCode != http.StatusOK {
-		t.Fatalf("PUT status = %d, want 200", resp.StatusCode)
-	}
-	stored, _ := mock.Configuration(ldapConnection(t, mock))
-	if stored.Properties["password"] != "initial-ldap-password" || stored.Properties["host"] != "ldap2.example.com" {
-		t.Errorf("stored properties = %v", stored.Properties)
+	resp = call(t, http.MethodPut, target, bearer, string(body), header(etag), nil)
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("ETag") == etag || resp.Header.Get("ETag") == "" {
+		t.Fatalf("conditional PUT: status = %d, ETag = %q; want 200 and a new entity tag", resp.StatusCode, resp.Header.Get("ETag"))
 	}
 
-	// Writing another value replaces the secret.
-	read["password"] = "rotated"
-	body, err = json.Marshal(read)
-	if err != nil {
-		t.Fatal(err)
+	if resp := call(t, http.MethodPut, target, bearer, string(body), header(etag), nil); resp.StatusCode != http.StatusPreconditionFailed {
+		t.Errorf("PUT with a stale entity tag: status = %d, want 412", resp.StatusCode)
 	}
-	call(t, http.MethodPut, target, bearer, string(body), header, nil)
-	if stored, _ := mock.Configuration(ldapConnection(t, mock)); stored.Properties["password"] != "rotated" {
-		t.Errorf("password = %q after it was rotated", stored.Properties["password"])
+
+	resp = call(t, http.MethodPut, target, bearer, string(body), header(""), nil)
+	if resp.StatusCode != http.StatusNoContent || resp.Header.Get("ETag") != "" {
+		t.Errorf("unconditional PUT: status = %d, ETag = %q; want an empty 204", resp.StatusCode, resp.Header.Get("ETag"))
 	}
+
+	stored, _ := mock.Configuration(id)
+	if stored.Properties["host"] != "ldap2.example.com" || stored.Properties["password"] != "initial-ldap-password" {
+		t.Errorf("stored properties = %v", stored.Properties)
+	}
+}
+
+func TestConfigurations_definitions(t *testing.T) {
+	t.Parallel()
+	_, server := start(t)
+	bearer := token(t, server.URL)
+
+	// SAS Viya cannot read a definition by name.
+	if resp := call(t, http.MethodGet, server.URL+"/configuration/definitions/logging.level", bearer, "", nil, nil); resp.StatusCode != http.StatusNotFound {
+		t.Errorf("GET by name: status = %d, want 404", resp.StatusCode)
+	}
+
+	var page struct {
+		Count int `json:"count"`
+		Items []struct {
+			Name  string `json:"name"`
+			Links []struct {
+				ResponseItemType string `json:"responseItemType"`
+			} `json:"links"`
+		} `json:"items"`
+	}
+	// The filter is ignored, as SAS Viya does.
+	call(t, http.MethodGet, server.URL+"/configuration/definitions?filter=eq(name,'logging.level')", bearer, "", nil, &page)
+	if page.Count != 3 || len(page.Items) != 3 {
+		t.Fatalf("count = %d with %d items, want all 3 definitions", page.Count, len(page.Items))
+	}
+	for _, item := range page.Items {
+		if item.Name == "logging.level" {
+			if len(item.Links) == 0 || item.Links[0].ResponseItemType != "application/vnd.sas.configuration.config.logging.level+json;version=1" {
+				t.Errorf("logging.level links = %+v", item.Links)
+			}
+			return
+		}
+	}
+	t.Error("logging.level is not in the list")
 }
 
 func TestConfigurations_contentTypeNamesTheDefinition(t *testing.T) {

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -296,14 +297,16 @@ func (r *configurationResource) createInstance(ctx context.Context, plan configu
 	definition := plan.Definition.ValueString()
 
 	// The media type carries the version of the definition. Other instances
-	// of the definition already have it; otherwise ask for the definition.
+	// of the definition already have it, which spares listing every
+	// definition of the deployment.
 	var mediaType string
 	if len(siblings) > 0 {
 		mediaType = siblings[0].Metadata.MediaType
 	} else {
-		described, err := r.client.GetConfigurationDefinition(ctx, definition)
+		var err error
+		mediaType, err = r.client.DefinitionMediaType(ctx, definition)
 		if err != nil {
-			if viya.IsNotFound(err) {
+			if errors.Is(err, viya.ErrDefinitionNotFound) {
 				diags.AddAttributeError(path.Root("definition"), "Unknown configuration definition",
 					fmt.Sprintf("SAS Viya has no configuration definition named %q.", definition))
 				return nil
@@ -311,7 +314,6 @@ func (r *configurationResource) createInstance(ctx context.Context, plan configu
 			diags.AddError("Unable to read configuration definition", err.Error())
 			return nil
 		}
-		mediaType = viya.ConfigurationMediaType(definition, described.Version)
 	}
 
 	configuration := viya.Configuration{

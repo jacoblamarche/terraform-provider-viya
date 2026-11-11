@@ -169,27 +169,8 @@ func (r *customGroupResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 
-	// Read the current entity tag, so that the update is rejected rather
-	// than silently overwriting a concurrent change.
-	current, err := r.client.GetGroup(ctx, plan.ID.ValueString())
+	updated, err := r.client.UpdateGroup(ctx, plan.toAPI())
 	if err != nil {
-		resp.Diagnostics.AddError("Unable to read group before update", err.Error())
-		return
-	}
-
-	desired := plan.toAPI()
-	desired.ETag = current.ETag
-
-	updated, err := r.client.UpdateGroup(ctx, desired)
-	if err != nil {
-		if viya.IsPreconditionFailed(err) {
-			resp.Diagnostics.AddError(
-				"Group was modified concurrently",
-				fmt.Sprintf("The group %q changed in SAS Viya while Terraform was updating it. "+
-					"Run the operation again.", plan.ID.ValueString()),
-			)
-			return
-		}
 		resp.Diagnostics.AddError("Unable to update group", err.Error())
 		return
 	}

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -55,12 +56,6 @@ type ConfigurationMetadata struct {
 	// Extra holds the metadata fields that the client does not interpret,
 	// such as createdBy, so that they survive a read-modify-write cycle.
 	Extra map[string]any
-}
-
-// ConfigurationMediaType returns the media type of the instances of a
-// definition.
-func ConfigurationMediaType(definition string, version int) string {
-	return configurationMediaTypePrefix + definition + configurationMediaTypeSuffix + ";version=" + strconv.Itoa(version)
 }
 
 // DefinitionName returns the name of the definition that the instance
@@ -236,6 +231,15 @@ func (c *Client) CreateConfiguration(ctx context.Context, configuration Configur
 	if err != nil {
 		return nil, err
 	}
+	if created.ID == "" {
+		// The service answered without a body: the Location header still
+		// names the new instance.
+		created = configuration
+		created.ID = path.Base(header.Get("Location"))
+		if created.ID == "." || created.ID == "/" {
+			return nil, errors.New("viya: the created configuration has no ID")
+		}
+	}
 	created.ETag = header.Get("ETag")
 	return &created, nil
 }
@@ -245,7 +249,9 @@ func (c *Client) CreateConfiguration(ctx context.Context, configuration Configur
 // removed, so callers normally read the instance, change it, and write it
 // back.
 //
-// When configuration.ETag is set, it is sent as an If-Match precondition.
+// When configuration.ETag is set, it is sent as an If-Match precondition:
+// the update fails with an error for which IsPreconditionFailed is true if
+// the instance changed since that entity tag was read.
 func (c *Client) UpdateConfiguration(ctx context.Context, configuration Configuration) (*Configuration, error) {
 	if configuration.ID == "" {
 		return nil, errors.New("viya: configuration ID is required")
@@ -265,6 +271,10 @@ func (c *Client) UpdateConfiguration(ctx context.Context, configuration Configur
 	if err != nil {
 		return nil, err
 	}
+	if updated.ID == "" {
+		// An unconditional update is answered with an empty 204.
+		updated = configuration
+	}
 	updated.ETag = header.Get("ETag")
 	return &updated, nil
 }
@@ -279,28 +289,70 @@ func (c *Client) DeleteConfiguration(ctx context.Context, id string) error {
 	return err
 }
 
-// ConfigurationDefinition describes the instances that a definition allows.
-type ConfigurationDefinition struct {
-	Name    string `json:"name"`
-	Version int    `json:"version"`
+// ErrDefinitionNotFound is returned by DefinitionMediaType when the
+// deployment has no definition with the given name.
+var ErrDefinitionNotFound = errors.New("viya: configuration definition not found")
+
+type definitionCollection struct {
+	Count int `json:"count"`
+	Items []struct {
+		Name  string `json:"name"`
+		Links []struct {
+			Type             string `json:"type"`
+			ItemType         string `json:"itemType"`
+			ResponseItemType string `json:"responseItemType"`
+		} `json:"links"`
+	} `json:"items"`
 }
 
-// GetConfigurationDefinition returns the definition with the given name.
-// Use IsNotFound to detect that it does not exist.
-func (c *Client) GetConfigurationDefinition(ctx context.Context, name string) (*ConfigurationDefinition, error) {
+// DefinitionMediaType returns the media type of the instances of a
+// definition, which carries its version.
+//
+// The Configuration service cannot read a definition by name and ignores
+// filters on the definition list, so the whole list is searched. The media
+// type is taken from the links of the definition.
+func (c *Client) DefinitionMediaType(ctx context.Context, name string) (string, error) {
 	if name == "" {
-		return nil, errors.New("viya: configuration definition name is required")
+		return "", errors.New("viya: configuration definition name is required")
 	}
+	const pageSize = 1000
+	prefix := configurationMediaTypePrefix + name + configurationMediaTypeSuffix
 
-	var definition ConfigurationDefinition
-	_, err := c.do(ctx, request{
-		method: http.MethodGet,
-		path:   definitionsPath + "/" + url.PathEscape(name),
-	}, &definition)
-	if err != nil {
-		return nil, err
+	seen := 0
+	for start := 0; ; start += pageSize {
+		var page definitionCollection
+		_, err := c.do(ctx, request{
+			method: http.MethodGet,
+			path:   definitionsPath,
+			query: url.Values{
+				"start": {strconv.Itoa(start)},
+				"limit": {strconv.Itoa(pageSize)},
+			},
+			accept: mediaTypeCollection,
+		}, &page)
+		if err != nil {
+			return "", err
+		}
+
+		for _, item := range page.Items {
+			if item.Name != name {
+				continue
+			}
+			for _, link := range item.Links {
+				for _, candidate := range []string{link.ResponseItemType, link.ItemType, link.Type} {
+					if strings.HasPrefix(candidate, prefix) {
+						return candidate, nil
+					}
+				}
+			}
+			return "", fmt.Errorf("viya: definition %q does not name the media type of its instances", name)
+		}
+
+		seen += len(page.Items)
+		if len(page.Items) == 0 || seen >= page.Count {
+			return "", fmt.Errorf("%w: %q", ErrDefinitionNotFound, name)
+		}
 	}
-	return &definition, nil
 }
 
 func configurationPath(id string) string {

@@ -20,10 +20,6 @@ const (
 
 	configurationMediaTypePrefix = "application/vnd.sas.configuration.config."
 	configurationMediaTypeSuffix = "+json"
-
-	// SecretMask is what the fake returns in place of the value of a secret
-	// property. Writing it back leaves the stored secret unchanged.
-	SecretMask = "********"
 )
 
 // ConfigurationProperty describes one property of a definition.
@@ -31,15 +27,13 @@ type ConfigurationProperty struct {
 	Name string `json:"name"`
 	// Type is informative: string, number or boolean.
 	Type string `json:"type"`
-	// Secret makes the fake mask the value when the instance is read.
-	Secret bool `json:"-"`
 }
 
 // ConfigurationDefinition describes the instances that a definition allows.
 type ConfigurationDefinition struct {
-	Name       string                  `json:"name"`
-	Version    int                     `json:"version"`
-	Properties []ConfigurationProperty `json:"properties"`
+	Name       string
+	Version    int
+	Properties []ConfigurationProperty
 }
 
 // Configuration is a configuration instance held by the fake.
@@ -48,7 +42,6 @@ type Configuration struct {
 	Definition string
 	Services   []string
 	IsDefault  bool
-	// Properties holds the stored values, secrets included and unmasked.
 	Properties map[string]any
 
 	etag      string
@@ -59,8 +52,8 @@ type Configuration struct {
 
 // sampleDefinitions is the catalogue that every fake starts with. It is a
 // small subset of what a real deployment has, chosen to cover the shapes
-// that matter: several named instances per service, a single instance with
-// a secret, and many small instances.
+// that matter: several named instances per service, a single instance that
+// holds a password, and many small instances.
 func sampleDefinitions() []ConfigurationDefinition {
 	return []ConfigurationDefinition{
 		{
@@ -76,7 +69,7 @@ func sampleDefinitions() []ConfigurationDefinition {
 				{Name: "host", Type: "string"},
 				{Name: "port", Type: "number"},
 				{Name: "userDN", Type: "string"},
-				{Name: "password", Type: "string", Secret: true},
+				{Name: "password", Type: "string"},
 				{Name: "anonymousBind", Type: "boolean"},
 			},
 		},
@@ -134,8 +127,8 @@ func (s *Server) AddConfiguration(configuration Configuration) string {
 	return stored.ID
 }
 
-// Configuration returns a copy of the instance with the given ID, with its
-// secrets unmasked, if it exists.
+// Configuration returns a copy of the instance with the given ID, if it
+// exists.
 func (s *Server) Configuration(id string) (Configuration, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -205,14 +198,11 @@ func (c *Configuration) clone() Configuration {
 	return copied
 }
 
-// representation renders the instance as the API returns it: properties as
-// top-level fields, secrets masked.
+// configurationRepresentation renders the instance as the API returns it:
+// properties as top-level fields, passwords included in clear text.
 func (s *Server) configurationRepresentation(c Configuration) map[string]any {
 	fields := make(map[string]any, len(c.Properties)+3)
 	for name, value := range c.Properties {
-		if s.isSecret(c.Definition, name) {
-			value = SecretMask
-		}
 		fields[name] = value
 	}
 
@@ -235,31 +225,66 @@ func (s *Server) configurationRepresentation(c Configuration) map[string]any {
 	return fields
 }
 
-// isSecret must be called with s.mu held.
-func (s *Server) isSecret(definition, property string) bool {
-	for _, candidate := range s.definitions[definition].Properties {
-		if candidate.Name == property {
-			return candidate.Secret
-		}
-	}
-	return false
-}
-
 func (s *Server) configurationMediaType(definition string) string {
 	return fmt.Sprintf("%s%s%s;version=%d",
 		configurationMediaTypePrefix, definition, configurationMediaTypeSuffix, s.definitions[definition].Version)
 }
 
-func (s *Server) handleGetDefinition(w http.ResponseWriter, r *http.Request) {
-	s.mu.Lock()
-	definition, ok := s.definitions[r.PathValue("name")]
-	s.mu.Unlock()
-	if !ok {
-		writeError(w, r, http.StatusNotFound,
-			fmt.Sprintf("The configuration definition %q could not be found.", r.PathValue("name")))
+// handleListDefinitions lists every definition. SAS Viya ignores the filter
+// parameter here, so the fake does too.
+func (s *Server) handleListDefinitions(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	for name := range query {
+		switch name {
+		case "start", "limit", "filter":
+		default:
+			writeError(w, r, http.StatusBadRequest,
+				fmt.Sprintf("The mock does not implement the %q query parameter.", name))
+			return
+		}
+	}
+	start, err := queryInt(query, "start", 0)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, "application/vnd.sas.configuration.definition+json", definition)
+	limit, err := queryInt(query, "limit", defaultPageSize)
+	if err != nil {
+		writeError(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	s.mu.Lock()
+	names := slices.Sorted(maps.Keys(s.definitions))
+	items := make([]map[string]any, 0, len(names))
+	for _, name := range names[min(start, len(names)):min(start+limit, len(names))] {
+		definition := s.definitions[name]
+		href := configurationsPath + "?definitionName=" + url.QueryEscape(name)
+		items = append(items, map[string]any{
+			"name":       definition.Name,
+			"label":      "",
+			"properties": definition.Properties,
+			"links": []map[string]string{{
+				"method":           http.MethodGet,
+				"rel":              "configurations",
+				"href":             href,
+				"uri":              href,
+				"type":             "application/vnd.sas.collection",
+				"responseItemType": s.configurationMediaType(name),
+			}},
+		})
+	}
+	s.mu.Unlock()
+
+	writeJSON(w, http.StatusOK, mediaTypeCollection, map[string]any{
+		"name":    "definitions",
+		"start":   start,
+		"limit":   limit,
+		"count":   len(names),
+		"items":   items,
+		"links":   []link{},
+		"version": 2,
+	})
 }
 
 func (s *Server) handleListConfigurations(w http.ResponseWriter, r *http.Request) {
@@ -378,12 +403,6 @@ func (s *Server) handleUpdateConfiguration(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// A secret that comes back masked was not changed by the client.
-	for name, value := range input.properties {
-		if value == SecretMask && s.isSecret(configuration.Definition, name) {
-			input.properties[name] = configuration.Properties[name]
-		}
-	}
 	configuration.Services = input.services
 	configuration.IsDefault = input.isDefault
 	configuration.Properties = input.properties
@@ -394,6 +413,12 @@ func (s *Server) handleUpdateConfiguration(w http.ResponseWriter, r *http.Reques
 	etag, mediaType := configuration.etag, s.configurationMediaType(configuration.Definition)
 	s.mu.Unlock()
 
+	// SAS Viya answers an unconditional update with an empty 204, and a
+	// conditional one with the updated instance.
+	if ifMatch == "" {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	w.Header().Set("ETag", etag)
 	writeJSON(w, http.StatusOK, mediaType, body)
 }

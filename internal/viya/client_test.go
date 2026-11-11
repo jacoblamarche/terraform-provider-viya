@@ -317,15 +317,11 @@ func TestGroups_lifecycle(t *testing.T) {
 	if created.ProviderID != "local" {
 		t.Errorf("ProviderID = %q, want %q", created.ProviderID, "local")
 	}
-	if created.ETag == "" {
-		t.Error("ETag is empty after creation")
-	}
-
 	read, err := client.GetGroup(ctx, "analysts")
 	if err != nil {
 		t.Fatalf("GetGroup: %v", err)
 	}
-	if read.Name != "Analysts" || read.Description != "Risk analysts" || read.ETag != created.ETag {
+	if read.Name != "Analysts" || read.Description != "Risk analysts" {
 		t.Errorf("GetGroup = %+v, want the group as created", read)
 	}
 
@@ -339,10 +335,6 @@ func TestGroups_lifecycle(t *testing.T) {
 	if updated.Name != "Risk Analysts" || updated.Description != "" || updated.State != viya.GroupStateInactive {
 		t.Errorf("UpdateGroup = %+v, want the new values", updated)
 	}
-	if updated.ETag == read.ETag {
-		t.Error("ETag did not change after the update")
-	}
-
 	if err := client.DeleteGroup(ctx, "analysts"); err != nil {
 		t.Fatalf("DeleteGroup: %v", err)
 	}
@@ -364,37 +356,6 @@ func TestGroups_createConflict(t *testing.T) {
 	}
 	if _, err := client.CreateGroup(ctx, viya.Group{ID: "dup", Name: "Second"}); !viya.IsConflict(err) {
 		t.Errorf("second CreateGroup: error = %v, want a conflict", err)
-	}
-}
-
-func TestGroups_updateWithStaleETag(t *testing.T) {
-	t.Parallel()
-	client, _ := newTestClient(t)
-	ctx := context.Background()
-
-	stale, err := client.CreateGroup(ctx, viya.Group{ID: "g", Name: "Original"})
-	if err != nil {
-		t.Fatalf("CreateGroup: %v", err)
-	}
-
-	// Someone else changes the group.
-	other := *stale
-	other.Name = "Changed elsewhere"
-	if _, err := client.UpdateGroup(ctx, other); err != nil {
-		t.Fatalf("concurrent UpdateGroup: %v", err)
-	}
-
-	stale.Name = "Mine"
-	if _, err := client.UpdateGroup(ctx, *stale); !viya.IsPreconditionFailed(err) {
-		t.Fatalf("UpdateGroup with a stale ETag: error = %v, want precondition failed", err)
-	}
-
-	current, err := client.GetGroup(ctx, "g")
-	if err != nil {
-		t.Fatalf("GetGroup: %v", err)
-	}
-	if current.Name != "Changed elsewhere" {
-		t.Errorf("Name = %q: the stale update overwrote the concurrent change", current.Name)
 	}
 }
 

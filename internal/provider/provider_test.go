@@ -82,8 +82,8 @@ provider "viya" {
 	}
 }
 
-// newStrictTestAccEnv returns a fake deployment that rejects updates
-// without an If-Match header. It skips the test when a real deployment is
+// newStrictTestAccEnv returns a fake deployment that rejects configuration
+// updates without an If-Match header. It skips the test when a real deployment is
 // targeted, because that behaviour cannot be switched on there.
 func newStrictTestAccEnv(t *testing.T) testAccEnv {
 	t.Helper()

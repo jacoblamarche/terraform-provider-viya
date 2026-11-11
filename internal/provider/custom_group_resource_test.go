@@ -313,22 +313,3 @@ resource "viya_custom_group" "test" {
 		})
 	}
 }
-
-func TestAccCustomGroup_requiresIfMatch(t *testing.T) {
-	// A deployment may reject updates that carry no If-Match header. The
-	// strict mode of the mock proves that the provider always sends one.
-	env := newStrictTestAccEnv(t)
-	id := testAccCustomGroupID()
-
-	resource.Test(t, resource.TestCase{
-		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-		CheckDestroy:             testAccCheckCustomGroupDestroyed(env),
-		Steps: []resource.TestStep{
-			{Config: testAccCustomGroupConfig(env, id, "Analysts", "", "")},
-			{
-				Config: testAccCustomGroupConfig(env, id, "Risk Analysts", "", ""),
-				Check:  testAccCheckCustomGroupInViya(env, id, viya.Group{Name: "Risk Analysts", State: "active"}),
-			},
-		},
-	})
-}

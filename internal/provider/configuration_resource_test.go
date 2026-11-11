@@ -591,3 +591,23 @@ resource "viya_configuration" "test" {
 		})
 	}
 }
+
+func TestAccConfiguration_sendsIfMatch(t *testing.T) {
+	// SAS Viya accepts updates without If-Match, but then cannot
+	// detect a concurrent change. The strict mode of the mock proves that
+	// the provider always sends the precondition.
+	env := newStrictTestAccEnv(t)
+	logger := testAccLoggerName()
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		CheckDestroy:             testAccCheckConfigurationsDeleted(env),
+		Steps: []resource.TestStep{
+			{Config: testAccLoggingConfig(env, logger, "DEBUG")},
+			{
+				Config: testAccLoggingConfig(env, logger, "INFO"),
+				Check:  testAccCheckConfigurationProperties(env, map[string]any{"level": "INFO"}),
+			},
+		},
+	})
+}

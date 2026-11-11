@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
-	"time"
 )
 
 const (
@@ -34,9 +33,6 @@ type Group struct {
 	ModifiedTimeStamp string `json:"modifiedTimeStamp"`
 	Links             []link `json:"links"`
 	Version           int    `json:"version"`
-
-	etag     string
-	modified time.Time
 }
 
 // groupInput is the part of a group that a client may set.
@@ -99,8 +95,6 @@ func (s *Server) handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		ModifiedTimeStamp: now.Format(timestampLayout),
 		Links:             groupLinks(input.ID),
 		Version:           2,
-		etag:              s.nextETag(),
-		modified:          now,
 	}
 	s.groups[group.ID] = group
 	created := *group
@@ -132,23 +126,12 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 	if !validateGroupInput(w, r, &input) {
 		return
 	}
-	ifMatch := r.Header.Get("If-Match")
 
 	s.mu.Lock()
 	group, exists := s.groups[id]
-	switch {
-	case !exists:
+	if !exists {
 		s.mu.Unlock()
 		writeGroupNotFound(w, r)
-		return
-	case ifMatch == "" && s.requireIfMatch:
-		s.mu.Unlock()
-		writeError(w, r, http.StatusPreconditionRequired, "The If-Match header is required.")
-		return
-	case ifMatch != "" && ifMatch != "*" && ifMatch != group.etag:
-		s.mu.Unlock()
-		writeError(w, r, http.StatusPreconditionFailed,
-			"The If-Match header does not match the current entity tag of the group.")
 		return
 	}
 	now := s.now().UTC()
@@ -156,8 +139,6 @@ func (s *Server) handleUpdateGroup(w http.ResponseWriter, r *http.Request) {
 	group.Description = input.Description
 	group.State = input.State
 	group.ModifiedTimeStamp = now.Format(timestampLayout)
-	group.modified = now
-	group.etag = s.nextETag()
 	updated := *group
 	s.mu.Unlock()
 
@@ -205,9 +186,8 @@ func validateGroupInput(w http.ResponseWriter, r *http.Request, input *groupInpu
 	return true
 }
 
+// writeGroup sends no ETag: the Identities service has none for groups.
 func writeGroup(w http.ResponseWriter, status int, group Group) {
-	w.Header().Set("ETag", group.etag)
-	w.Header().Set("Last-Modified", group.modified.Format(http.TimeFormat))
 	writeJSON(w, status, mediaTypeGroup, group)
 }
 

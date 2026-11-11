@@ -63,9 +63,9 @@ func WithTokenTTL(ttl time.Duration) Option {
 	return func(s *Server) { s.tokenTTL = ttl }
 }
 
-// WithRequireIfMatch makes updates fail with HTTP 428 when the request has
-// no If-Match header. By default the precondition is checked only when the
-// header is present.
+// WithRequireIfMatch makes configuration updates fail with HTTP 428 when the
+// request has no If-Match header. SAS Viya accepts them; the option proves
+// that the provider always sends the precondition.
 func WithRequireIfMatch() Option {
 	return func(s *Server) { s.requireIfMatch = true }
 }
@@ -98,7 +98,7 @@ func New(opts ...Option) *Server {
 	mux.HandleFunc("GET /identities/groups/{id}", s.authenticated(s.handleGetGroup))
 	mux.HandleFunc("PUT /identities/groups/{id}", s.authenticated(s.handleUpdateGroup))
 	mux.HandleFunc("DELETE /identities/groups/{id}", s.authenticated(s.handleDeleteGroup))
-	mux.HandleFunc("GET /configuration/definitions/{name}", s.authenticated(s.handleGetDefinition))
+	mux.HandleFunc("GET /configuration/definitions", s.authenticated(s.handleListDefinitions))
 	mux.HandleFunc("GET /configuration/configurations", s.authenticated(s.handleListConfigurations))
 	mux.HandleFunc("POST /configuration/configurations", s.authenticated(s.handleCreateConfiguration))
 	mux.HandleFunc("GET /configuration/configurations/{id}", s.authenticated(s.handleGetConfiguration))
@@ -217,10 +217,11 @@ func (s *Server) authenticated(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// nextETag must be called with s.mu held.
+// nextETag returns a weak entity tag, as the Configuration service does. It
+// must be called with s.mu held.
 func (s *Server) nextETag() string {
 	s.revision++
-	return `"` + strconv.FormatInt(s.revision, 36) + `"`
+	return `W/"` + strconv.FormatInt(s.revision, 10) + `"`
 }
 
 type link struct {
