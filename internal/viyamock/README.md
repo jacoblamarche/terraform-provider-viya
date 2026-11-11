@@ -10,7 +10,7 @@ creates can be read back, updated, imported and deleted.
 
 | Service | Endpoint | Notes |
 | --- | --- | --- |
-| SAS Logon | `POST /SASLogon/oauth/token` | `client_credentials` and `password` grants; client authenticated with HTTP Basic or form fields |
+| SAS Logon | `POST /SASLogon/oauth/token` | `client_credentials` grant; client authenticated with HTTP Basic or form fields |
 | Identities | `POST /identities/groups` | |
 | Identities | `GET`, `PUT`, `DELETE /identities/groups/{id}` | No entity tag; `If-Match` is ignored |
 | Configuration | `GET /configuration/definitions` | Every definition, with a link that names the media type of its instances; `filter` is ignored |

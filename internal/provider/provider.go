@@ -22,8 +22,6 @@ const (
 	envAccessToken  = "VIYA_ACCESS_TOKEN"
 	envClientID     = "VIYA_CLIENT_ID"
 	envClientSecret = "VIYA_CLIENT_SECRET"
-	envUsername     = "VIYA_USERNAME"
-	envPassword     = "VIYA_PASSWORD"
 )
 
 var _ provider.Provider = (*viyaProvider)(nil)
@@ -37,8 +35,6 @@ type viyaProviderModel struct {
 	AccessToken  types.String `tfsdk:"access_token"`
 	ClientID     types.String `tfsdk:"client_id"`
 	ClientSecret types.String `tfsdk:"client_secret"`
-	Username     types.String `tfsdk:"username"`
-	Password     types.String `tfsdk:"password"`
 }
 
 // New returns a function that creates the provider, as providerserver
@@ -58,11 +54,9 @@ func (p *viyaProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "The Viya provider manages the configuration of a " +
 			"[SAS Viya](https://www.sas.com/en_us/software/viya.html) deployment through its REST APIs.\n\n" +
-			"The provider authenticates against SAS Logon Manager in one of three ways:\n\n" +
+			"The provider authenticates against SAS Logon Manager in one of two ways:\n\n" +
 			"- `client_id` and `client_secret`: the OAuth2 client credentials grant. " +
 			"This is the recommended way for automation.\n" +
-			"- `client_id`, `client_secret`, `username` and `password`: the OAuth2 password grant, " +
-			"which acts on behalf of a user.\n" +
 			"- `access_token`: a token obtained out of band. It is not renewed when it expires.",
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
@@ -87,17 +81,6 @@ func (p *viyaProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
 				MarkdownDescription: "Secret of the OAuth2 client. " +
 					"Can also be set with the `" + envClientSecret + "` environment variable.",
 			},
-			"username": schema.StringAttribute{
-				Optional: true,
-				MarkdownDescription: "User on whose behalf the provider acts. Selects the OAuth2 password grant. " +
-					"Can also be set with the `" + envUsername + "` environment variable.",
-			},
-			"password": schema.StringAttribute{
-				Optional:  true,
-				Sensitive: true,
-				MarkdownDescription: "Password of the user. " +
-					"Can also be set with the `" + envPassword + "` environment variable.",
-			},
 		},
 	}
 }
@@ -121,8 +104,6 @@ func (p *viyaProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		{"access_token", config.AccessToken, envAccessToken},
 		{"client_id", config.ClientID, envClientID},
 		{"client_secret", config.ClientSecret, envClientSecret},
-		{"username", config.Username, envUsername},
-		{"password", config.Password, envPassword},
 	}
 	resolved := make(map[string]string, len(arguments))
 	for _, argument := range arguments {
@@ -149,8 +130,6 @@ func (p *viyaProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 		AccessToken:  resolved["access_token"],
 		ClientID:     resolved["client_id"],
 		ClientSecret: resolved["client_secret"],
-		Username:     resolved["username"],
-		Password:     resolved["password"],
 		Version:      p.version,
 	}
 
@@ -165,15 +144,8 @@ func (p *viyaProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 	if settings.AccessToken == "" && settings.ClientID == "" {
 		resp.Diagnostics.AddError(
 			"Missing Viya credentials",
-			"Set either access_token, or client_id and client_secret (with username and password for "+
-				"the password grant). The matching environment variables are "+envAccessToken+", "+
-				envClientID+", "+envClientSecret+", "+envUsername+" and "+envPassword+".",
-		)
-	}
-	if settings.AccessToken == "" && (settings.Username == "") != (settings.Password == "") {
-		resp.Diagnostics.AddError(
-			"Incomplete Viya user credentials",
-			"The username and password arguments must be set together.",
+			"Set either access_token, or client_id and client_secret. The matching environment "+
+				"variables are "+envAccessToken+", "+envClientID+" and "+envClientSecret+".",
 		)
 	}
 	if resp.Diagnostics.HasError() {
@@ -206,8 +178,6 @@ type clientSettings struct {
 	AccessToken  string
 	ClientID     string
 	ClientSecret string
-	Username     string
-	Password     string
 	Version      string
 }
 
@@ -221,8 +191,6 @@ func newClient(settings clientSettings) (*viya.Client, error) {
 			Endpoint:     settings.Endpoint,
 			ClientID:     settings.ClientID,
 			ClientSecret: settings.ClientSecret,
-			Username:     settings.Username,
-			Password:     settings.Password,
 			UserAgent:    userAgent,
 		})
 		if err != nil {

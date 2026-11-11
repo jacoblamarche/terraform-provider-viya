@@ -72,7 +72,7 @@ func TestNewClient_validatesConfig(t *testing.T) {
 	}
 }
 
-func TestOAuth_passwordGrant(t *testing.T) {
+func TestOAuth_badCredentials(t *testing.T) {
 	t.Parallel()
 
 	mock := viyamock.New()
@@ -82,58 +82,19 @@ func TestOAuth_passwordGrant(t *testing.T) {
 	tokens, err := viya.NewOAuthTokenSource(viya.OAuthConfig{
 		Endpoint:     server.URL,
 		ClientID:     viyamock.DefaultClientID,
-		ClientSecret: viyamock.DefaultClientSecret,
-		Username:     viyamock.DefaultUsername,
-		Password:     viyamock.DefaultPassword,
+		ClientSecret: "wrong",
 	})
 	if err != nil {
 		t.Fatalf("NewOAuthTokenSource: %v", err)
 	}
-	client, err := viya.NewClient(viya.Config{Endpoint: server.URL, TokenSource: tokens})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+	_, err = tokens.Token(context.Background())
+	if err == nil {
+		t.Fatal("Token succeeded, want an authentication error")
 	}
-
-	if _, err := client.ListConfigurations(context.Background(), "logging.level"); err != nil {
-		t.Fatalf("request with the password grant: %v", err)
-	}
-}
-
-func TestOAuth_badCredentials(t *testing.T) {
-	t.Parallel()
-
-	mock := viyamock.New()
-	server := mock.Start()
-	t.Cleanup(server.Close)
-
-	tests := map[string]viya.OAuthConfig{
-		"wrong client secret": {
-			ClientID: viyamock.DefaultClientID, ClientSecret: "wrong",
-		},
-		"wrong user password": {
-			ClientID: viyamock.DefaultClientID, ClientSecret: viyamock.DefaultClientSecret,
-			Username: viyamock.DefaultUsername, Password: "wrong",
-		},
-	}
-	for name, cfg := range tests {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			cfg.Endpoint = server.URL
-			tokens, err := viya.NewOAuthTokenSource(cfg)
-			if err != nil {
-				t.Fatalf("NewOAuthTokenSource: %v", err)
-			}
-			_, err = tokens.Token(context.Background())
-			if err == nil {
-				t.Fatal("Token succeeded, want an authentication error")
-			}
-			for _, want := range []string{"authentication failed", "Bad credentials"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Errorf("error %q does not contain %q", err, want)
-				}
-			}
-		})
+	for _, want := range []string{"authentication failed", "Bad credentials"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not contain %q", err, want)
+		}
 	}
 }
 

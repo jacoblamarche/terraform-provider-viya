@@ -3,18 +3,17 @@
 page_title: "viya Provider"
 description: |-
   The Viya provider manages the configuration of a SAS Viya https://www.sas.com/en_us/software/viya.html deployment through its REST APIs.
-  The provider authenticates against SAS Logon Manager in one of three ways:
-  client_id and client_secret: the OAuth2 client credentials grant. This is the recommended way for automation.client_id, client_secret, username and password: the OAuth2 password grant, which acts on behalf of a user.access_token: a token obtained out of band. It is not renewed when it expires.
+  The provider authenticates against SAS Logon Manager in one of two ways:
+  client_id and client_secret: the OAuth2 client credentials grant. This is the recommended way for automation.access_token: a token obtained out of band. It is not renewed when it expires.
 ---
 
 # viya Provider
 
 The Viya provider manages the configuration of a [SAS Viya](https://www.sas.com/en_us/software/viya.html) deployment through its REST APIs.
 
-The provider authenticates against SAS Logon Manager in one of three ways:
+The provider authenticates against SAS Logon Manager in one of two ways:
 
 - `client_id` and `client_secret`: the OAuth2 client credentials grant. This is the recommended way for automation.
-- `client_id`, `client_secret`, `username` and `password`: the OAuth2 password grant, which acts on behalf of a user.
 - `access_token`: a token obtained out of band. It is not renewed when it expires.
 
 ## Example Usage
@@ -46,5 +45,3 @@ provider "viya" {
 - `client_id` (String) ID of an OAuth2 client registered in SAS Logon Manager. Can also be set with the `VIYA_CLIENT_ID` environment variable.
 - `client_secret` (String, Sensitive) Secret of the OAuth2 client. Can also be set with the `VIYA_CLIENT_SECRET` environment variable.
 - `endpoint` (String) Base URL of the SAS Viya deployment, for example `https://viya.example.com`. Can also be set with the `VIYA_ENDPOINT` environment variable.
-- `password` (String, Sensitive) Password of the user. Can also be set with the `VIYA_PASSWORD` environment variable.
-- `username` (String) User on whose behalf the provider acts. Selects the OAuth2 password grant. Can also be set with the `VIYA_USERNAME` environment variable.

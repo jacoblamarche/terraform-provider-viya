@@ -8,8 +8,8 @@ project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Provider configuration with three authentication methods against SAS Logon
-  Manager: client credentials, password, and access token.
+- Provider configuration with two authentication methods against SAS Logon
+  Manager: client credentials and access token.
 - `viya_configuration` resource: manages an instance of a configuration
   definition of the Configuration service.
 - `viya_custom_group` resource: manages a custom group of the Identities service.

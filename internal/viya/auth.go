@@ -41,16 +41,12 @@ func (t StaticToken) Token(context.Context) (string, error) {
 // Invalidate implements TokenSource. A static token cannot be renewed.
 func (t StaticToken) Invalidate() {}
 
-// OAuthConfig describes how to obtain tokens from SAS Logon Manager.
-//
-// With only a client ID and secret, the client_credentials grant is used.
-// When Username is set, the password grant is used on behalf of that user.
+// OAuthConfig describes how to obtain tokens from SAS Logon Manager with the
+// client_credentials grant.
 type OAuthConfig struct {
 	Endpoint     string
 	ClientID     string
 	ClientSecret string
-	Username     string
-	Password     string
 	// HTTPClient performs the token requests. Defaults to http.DefaultClient.
 	HTTPClient *http.Client
 	UserAgent  string
@@ -74,9 +70,6 @@ func NewOAuthTokenSource(cfg OAuthConfig) (TokenSource, error) {
 	}
 	if cfg.ClientID == "" {
 		return nil, errors.New("viya: OAuth client ID is required")
-	}
-	if cfg.Username == "" && cfg.Password != "" {
-		return nil, errors.New("viya: a password was given without a username")
 	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = http.DefaultClient
@@ -115,14 +108,7 @@ type tokenResponse struct {
 }
 
 func (s *oauthTokenSource) fetch(ctx context.Context) (string, time.Duration, error) {
-	form := url.Values{}
-	if s.cfg.Username != "" {
-		form.Set("grant_type", "password")
-		form.Set("username", s.cfg.Username)
-		form.Set("password", s.cfg.Password)
-	} else {
-		form.Set("grant_type", "client_credentials")
-	}
+	form := url.Values{"grant_type": {"client_credentials"}}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		s.cfg.Endpoint+tokenPath, strings.NewReader(form.Encode()))

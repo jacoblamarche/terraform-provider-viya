@@ -52,7 +52,6 @@ func run(addr string, requireIfMatch bool) error {
 
 	log.Printf("viya-mock listening on http://%s", listener.Addr())
 	log.Printf("  client: %s / %s", viyamock.DefaultClientID, viyamock.DefaultClientSecret)
-	log.Printf("  user:   %s / %s", viyamock.DefaultUsername, viyamock.DefaultPassword)
 
 	go func() {
 		<-ctx.Done()

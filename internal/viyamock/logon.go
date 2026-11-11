@@ -34,16 +34,9 @@ func (s *Server) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch r.PostForm.Get("grant_type") {
-	case "client_credentials":
-	case "password":
-		if !equal(r.PostForm.Get("username"), DefaultUsername) || !equal(r.PostForm.Get("password"), DefaultPassword) {
-			writeOAuthError(w, http.StatusUnauthorized, "unauthorized", "Bad credentials")
-			return
-		}
-	default:
+	if r.PostForm.Get("grant_type") != "client_credentials" {
 		writeOAuthError(w, http.StatusBadRequest, "unsupported_grant_type",
-			"The mock supports the client_credentials and password grants.")
+			"The mock supports the client_credentials grant only.")
 		return
 	}
 

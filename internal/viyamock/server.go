@@ -29,8 +29,6 @@ import (
 const (
 	DefaultClientID     = "viya-mock-client"
 	DefaultClientSecret = "viya-mock-secret"
-	DefaultUsername     = "viya-mock-user"
-	DefaultPassword     = "viya-mock-password"
 
 	defaultTokenTTL = time.Hour
 )

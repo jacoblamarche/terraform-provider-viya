@@ -45,8 +45,6 @@ func newTestAccEnv(t *testing.T, mockOptions ...viyamock.Option) testAccEnv {
 			AccessToken:  os.Getenv(envAccessToken),
 			ClientID:     os.Getenv(envClientID),
 			ClientSecret: os.Getenv(envClientSecret),
-			Username:     os.Getenv(envUsername),
-			Password:     os.Getenv(envPassword),
 			Version:      "test",
 		})
 		if err != nil {
@@ -96,7 +94,7 @@ func newStrictTestAccEnv(t *testing.T) testAccEnv {
 // clearProviderEnv unsets the VIYA_* variables for the duration of a test.
 func clearProviderEnv(t *testing.T) {
 	t.Helper()
-	for _, name := range []string{envEndpoint, envAccessToken, envClientID, envClientSecret, envUsername, envPassword} {
+	for _, name := range []string{envEndpoint, envAccessToken, envClientID, envClientSecret} {
 		t.Setenv(name, "")
 	}
 }
@@ -120,14 +118,6 @@ func TestAccProvider_configurationErrors(t *testing.T) {
 		"missing credentials": {
 			config: `provider "viya" { endpoint = "https://viya.example.com" }`,
 			want:   "Missing Viya credentials",
-		},
-		"username without password": {
-			config: `provider "viya" {
-  endpoint  = "https://viya.example.com"
-  client_id = "c"
-  username  = "u"
-}`,
-			want: "Incomplete Viya user credentials",
 		},
 		"endpoint that is not a URL": {
 			config: `provider "viya" {
@@ -161,8 +151,6 @@ func TestAccProvider_environmentVariables(t *testing.T) {
 	t.Setenv(envEndpoint, server.URL)
 	t.Setenv(envClientID, viyamock.DefaultClientID)
 	t.Setenv(envClientSecret, viyamock.DefaultClientSecret)
-	t.Setenv(envUsername, viyamock.DefaultUsername)
-	t.Setenv(envPassword, viyamock.DefaultPassword)
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,

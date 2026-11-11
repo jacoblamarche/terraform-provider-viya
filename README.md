@@ -58,7 +58,6 @@ through the environment rather than in configuration files.
 | Method | Arguments | Environment variables |
 | --- | --- | --- |
 | Client credentials (recommended for automation) | `client_id`, `client_secret` | `VIYA_CLIENT_ID`, `VIYA_CLIENT_SECRET` |
-| Password, on behalf of a user | the above, plus `username`, `password` | the above, plus `VIYA_USERNAME`, `VIYA_PASSWORD` |
 | Access token obtained out of band (not renewed) | `access_token` | `VIYA_ACCESS_TOKEN` |
 
 The endpoint can be set with `VIYA_ENDPOINT`. See the
