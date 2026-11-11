@@ -77,6 +77,7 @@ Requirements: [Go](https://go.dev/doc/install) 1.27 or later,
 | `make test` | Runs the unit tests |
 | `make testacc` | Runs every test, including the Terraform acceptance tests |
 | `make lint` | Runs the linters |
+| `make vulncheck` | Reports known vulnerabilities in the code and its dependencies |
 | `make docs` | Regenerates `docs/` from the schemas and `examples/` |
 | `make mock` | Serves the fake Viya deployment on `http://127.0.0.1:8080` |
 

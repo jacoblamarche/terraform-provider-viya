@@ -31,6 +31,8 @@ jobs:
         with:
           version: "~> v2"
           args: check
+      - name: Check for known vulnerabilities
+        run: make vulncheck
 
   generate:
     name: Generated files are up to date

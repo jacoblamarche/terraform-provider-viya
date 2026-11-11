@@ -1,6 +1,6 @@
-# Version of the documentation generator, pinned so that generated files are
-# reproducible. See https://github.com/hashicorp/terraform-plugin-docs.
+# Tool versions, pinned so that every run gives the same result.
 TFPLUGINDOCS_VERSION := v0.25.0
+GOVULNCHECK_VERSION := v1.9.0
 
 default: build
 
@@ -20,6 +20,10 @@ fmt: ## Format Go and Terraform files.
 .PHONY: lint
 lint: ## Run the linters.
 	golangci-lint run
+
+.PHONY: vulncheck
+vulncheck: ## Report known vulnerabilities in the code and its dependencies.
+	go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...
 
 .PHONY: test
 test: ## Run the unit tests. Acceptance tests are skipped.
