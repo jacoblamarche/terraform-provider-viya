@@ -192,6 +192,7 @@ func (p *viyaProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 
 func (p *viyaProvider) Resources(context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		newConfigurationResource,
 		newCustomGroupResource,
 	}
 }

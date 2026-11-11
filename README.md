@@ -18,6 +18,7 @@ trademark of HashiCorp, Inc.
 
 | Resource | Manages |
 | --- | --- |
+| [`viya_configuration`](docs/resources/configuration.md) | An instance of a configuration definition, such as the LDAP connection or the Compute autoexec |
 | [`viya_custom_group`](docs/resources/custom_group.md) | A custom group of the Identities service |
 
 ## Compatibility
@@ -98,7 +99,10 @@ make testacc
 ### Testing against a real Viya deployment
 
 The same suite runs against a real deployment when `VIYA_ENDPOINT` is set. It
-creates and deletes groups whose ID starts with `tfacc-`.
+creates and deletes groups whose ID starts with `tfacc-`, and `logging.level`
+configuration instances for loggers whose name starts with `tfacc.`. The tests
+that rewrite existing settings, such as the LDAP connection, only run against
+the fake.
 
 ```shell
 export VIYA_ENDPOINT=https://viya.example.com
