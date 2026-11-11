@@ -123,6 +123,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.Unlock()
 
 	if fault != nil {
+		if fault.Delay > 0 {
+			select {
+			case <-time.After(fault.Delay):
+			case <-r.Context().Done():
+				return
+			}
+		}
 		if fault.RetryAfter > 0 {
 			w.Header().Set("Retry-After", strconv.Itoa(fault.RetryAfter))
 		}
@@ -156,6 +163,8 @@ type Fault struct {
 	// RetryAfter is sent as the Retry-After header, in seconds, when
 	// positive.
 	RetryAfter int
+	// Delay is how long the fake stays silent before it answers.
+	Delay time.Duration
 	// Times is how many requests the fault affects. Zero means one.
 	Times int
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -47,16 +46,17 @@ type OAuthConfig struct {
 	Endpoint     string
 	ClientID     string
 	ClientSecret string
-	// HTTPClient performs the token requests. Defaults to http.DefaultClient.
-	HTTPClient *http.Client
-	UserAgent  string
+	UserAgent    string
+	// Log, when set, receives one event per token request.
+	Log LogFunc
 }
 
 // oauthTokenSource obtains tokens from SAS Logon and caches them until
 // shortly before they expire.
 type oauthTokenSource struct {
-	cfg OAuthConfig
-	now func() time.Time
+	cfg      OAuthConfig
+	exchange exchanger
+	now      func() time.Time
 
 	mu      sync.Mutex
 	token   string
@@ -73,10 +73,11 @@ func NewOAuthTokenSource(cfg OAuthConfig) (TokenSource, error) {
 	if cfg.ClientID == "" {
 		return nil, errors.New("viya: OAuth client ID is required")
 	}
-	if cfg.HTTPClient == nil {
-		cfg.HTTPClient = http.DefaultClient
-	}
-	return &oauthTokenSource{cfg: cfg, now: time.Now}, nil
+	return &oauthTokenSource{
+		cfg:      cfg,
+		exchange: newExchanger(defaultRequestTimeout, cfg.Log),
+		now:      time.Now,
+	}, nil
 }
 
 func (s *oauthTokenSource) Token(ctx context.Context) (string, error) {
@@ -123,19 +124,13 @@ func (s *oauthTokenSource) fetch(ctx context.Context) (string, time.Duration, er
 		req.Header.Set("User-Agent", s.cfg.UserAgent)
 	}
 
-	resp, err := s.cfg.HTTPClient.Do(req)
+	status, _, body, err := s.exchange.do(ctx, req)
 	if err != nil {
 		return "", 0, fmt.Errorf("viya: requesting token: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return "", 0, fmt.Errorf("viya: reading token response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
+	if status != http.StatusOK {
 		return "", 0, fmt.Errorf("viya: authentication failed: %w",
-			newAPIError(http.MethodPost, tokenPath, resp.StatusCode, body))
+			newAPIError(http.MethodPost, tokenPath, status, body))
 	}
 
 	var decoded tokenResponse

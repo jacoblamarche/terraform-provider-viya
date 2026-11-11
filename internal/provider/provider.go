@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 
 	"github.com/jacoblamarche/terraform-provider-viya/internal/viya"
 )
@@ -57,7 +58,10 @@ func (p *viyaProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
 			"The provider authenticates against SAS Logon Manager in one of two ways:\n\n" +
 			"- `client_id` and `client_secret`: the OAuth2 client credentials grant. " +
 			"This is the recommended way for automation.\n" +
-			"- `access_token`: a token obtained out of band. It is not renewed when it expires.",
+			"- `access_token`: a token obtained out of band. It is not renewed when it expires.\n\n" +
+			"A request that gets no response from SAS Viya within 60 seconds fails. " +
+			"With `TF_LOG=DEBUG`, the provider logs each request that it sends: method, path, status " +
+			"and duration. Request and response bodies are never logged.",
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
 				Optional: true,
@@ -201,6 +205,7 @@ func newClient(settings clientSettings) (*viya.Client, error) {
 			ClientID:     settings.ClientID,
 			ClientSecret: settings.ClientSecret,
 			UserAgent:    userAgent,
+			Log:          tflog.Debug,
 		})
 		if err != nil {
 			return nil, err
@@ -211,5 +216,6 @@ func newClient(settings clientSettings) (*viya.Client, error) {
 		Endpoint:    settings.Endpoint,
 		TokenSource: tokens,
 		UserAgent:   userAgent,
+		Log:         tflog.Debug,
 	})
 }

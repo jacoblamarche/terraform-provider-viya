@@ -5,6 +5,7 @@ description: |-
   The Viya provider manages the configuration of a SAS Viya https://www.sas.com/en_us/software/viya.html deployment through its REST APIs.
   The provider authenticates against SAS Logon Manager in one of two ways:
   client_id and client_secret: the OAuth2 client credentials grant. This is the recommended way for automation.access_token: a token obtained out of band. It is not renewed when it expires.
+  A request that gets no response from SAS Viya within 60 seconds fails. With TF_LOG=DEBUG, the provider logs each request that it sends: method, path, status and duration. Request and response bodies are never logged.
 ---
 
 # viya Provider
@@ -15,6 +16,8 @@ The provider authenticates against SAS Logon Manager in one of two ways:
 
 - `client_id` and `client_secret`: the OAuth2 client credentials grant. This is the recommended way for automation.
 - `access_token`: a token obtained out of band. It is not renewed when it expires.
+
+A request that gets no response from SAS Viya within 60 seconds fails. With `TF_LOG=DEBUG`, the provider logs each request that it sends: method, path, status and duration. Request and response bodies are never logged.
 
 ## Example Usage
 

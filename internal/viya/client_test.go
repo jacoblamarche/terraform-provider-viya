@@ -3,8 +3,10 @@ package viya_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -287,6 +289,108 @@ func TestClient_retryStopsWhenContextIsCancelled(t *testing.T) {
 	defer cancel()
 	if _, err := client.ListConfigurations(ctx, "logging.level"); err == nil {
 		t.Fatal("the request succeeded, want a context error")
+	}
+}
+
+func TestClient_givesUpOnASilentDeployment(t *testing.T) {
+	t.Parallel()
+
+	mock := viyamock.New()
+	server := mock.Start()
+	t.Cleanup(server.Close)
+
+	client, err := viya.NewClient(viya.Config{
+		Endpoint:       server.URL,
+		TokenSource:    viya.StaticToken("t"),
+		RequestTimeout: 50 * time.Millisecond,
+		RetryWaitMin:   time.Millisecond,
+		RetryWaitMax:   5 * time.Millisecond,
+	})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+
+	mock.InjectFault(viyamock.Fault{
+		PathPrefix: "/configuration/", Status: http.StatusServiceUnavailable, Delay: 30 * time.Second, Times: 10,
+	})
+
+	start := time.Now()
+	_, err = client.ListConfigurations(context.Background(), "logging.level")
+	if err == nil || !strings.Contains(err.Error(), "no response from SAS Viya within 50ms") {
+		t.Fatalf("error = %v, want it to report the time limit", err)
+	}
+	if elapsed := time.Since(start); elapsed > 5*time.Second {
+		t.Errorf("the call took %s: the time limit did not apply", elapsed)
+	}
+	// Retrying would multiply the wait for a deployment that stays silent.
+	if got := countRequests(mock, http.MethodGet, "/configuration/configurations"); got != 1 {
+		t.Errorf("requests = %d, want 1", got)
+	}
+}
+
+func TestClient_logsRequestsWithoutSecrets(t *testing.T) {
+	t.Parallel()
+
+	mock := viyamock.New()
+	server := mock.Start()
+	t.Cleanup(server.Close)
+
+	var (
+		mu     sync.Mutex
+		events []map[string]any
+	)
+	log := func(_ context.Context, _ string, fields ...map[string]any) {
+		mu.Lock()
+		defer mu.Unlock()
+		events = append(events, fields...)
+	}
+
+	tokens, err := viya.NewOAuthTokenSource(viya.OAuthConfig{
+		Endpoint:     server.URL,
+		ClientID:     viyamock.DefaultClientID,
+		ClientSecret: viyamock.DefaultClientSecret,
+		Log:          log,
+	})
+	if err != nil {
+		t.Fatalf("NewOAuthTokenSource: %v", err)
+	}
+	client, err := viya.NewClient(viya.Config{Endpoint: server.URL, TokenSource: tokens, Log: log})
+	if err != nil {
+		t.Fatalf("NewClient: %v", err)
+	}
+	ctx := context.Background()
+
+	if _, err := client.CreateGroup(ctx, viya.Group{ID: "g", Name: "secret-looking-name"}); err != nil {
+		t.Fatalf("CreateGroup: %v", err)
+	}
+	if _, err := client.GetGroup(ctx, "missing"); !viya.IsNotFound(err) {
+		t.Fatalf("GetGroup: error = %v, want not found", err)
+	}
+
+	want := []string{
+		"POST /SASLogon/oauth/token 200",
+		"POST /identities/groups 201",
+		"GET /identities/groups/missing 404",
+	}
+	if len(events) != len(want) {
+		t.Fatalf("logged %d events, want %d: %v", len(events), len(want), events)
+	}
+	for i, event := range events {
+		if got := fmt.Sprintf("%v %v %v", event["method"], event["path"], event["status"]); got != want[i] {
+			t.Errorf("event %d = %q, want %q", i, got, want[i])
+		}
+		for name, value := range event {
+			switch name {
+			case "method", "path", "status", "duration_ms":
+			default:
+				t.Errorf("event %d has an unexpected field %q", i, name)
+			}
+			// Neither a credential nor a request body may reach the log.
+			text := fmt.Sprint(value)
+			if strings.Contains(text, viyamock.DefaultClientSecret) || strings.Contains(text, "secret-looking-name") {
+				t.Errorf("event %d leaks a secret or a body in %q", i, name)
+			}
+		}
 	}
 }
 

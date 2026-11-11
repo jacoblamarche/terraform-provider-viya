@@ -81,8 +81,8 @@ defer server.Close()
 
 Tests can also reach behind the API:
 
-- `InjectFault` makes the next matching requests fail with a given status, to
-  exercise retries.
+- `InjectFault` makes the next matching requests fail with a given status,
+  after an optional delay, to exercise retries and time limits.
 - `RevokeTokens` invalidates every token, to exercise re-authentication.
 - `RemoveGroup` deletes a group as if someone had done it outside Terraform.
 - `AddConfiguration`, `SetConfigurationProperty` and `RemoveConfiguration`

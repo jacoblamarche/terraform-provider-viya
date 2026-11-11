@@ -20,8 +20,6 @@ import (
 )
 
 const (
-	maxResponseBytes = 10 << 20
-
 	defaultMaxRetries   = 3
 	defaultMinRetryWait = 500 * time.Millisecond
 	defaultMaxRetryWait = 10 * time.Second
@@ -33,9 +31,12 @@ type Config struct {
 	// https://viya.example.com. It is required.
 	Endpoint    string
 	TokenSource TokenSource
-	// HTTPClient performs the requests. Defaults to http.DefaultClient.
-	HTTPClient *http.Client
-	UserAgent  string
+	UserAgent   string
+	// Log, when set, receives one event per HTTP exchange.
+	Log LogFunc
+	// RequestTimeout bounds one HTTP exchange. Zero selects the default of
+	// 60 seconds.
+	RequestTimeout time.Duration
 	// MaxRetries is the number of times a transient failure is retried.
 	// Zero selects the default of 3; a negative value disables retries.
 	MaxRetries int
@@ -49,7 +50,7 @@ type Config struct {
 type Client struct {
 	endpoint     string
 	tokens       TokenSource
-	http         *http.Client
+	exchange     exchanger
 	userAgent    string
 	maxRetries   int
 	retryWaitMin time.Duration
@@ -69,14 +70,11 @@ func NewClient(cfg Config) (*Client, error) {
 	client := &Client{
 		endpoint:     endpoint,
 		tokens:       cfg.TokenSource,
-		http:         cfg.HTTPClient,
+		exchange:     newExchanger(cfg.RequestTimeout, cfg.Log),
 		userAgent:    cfg.UserAgent,
 		maxRetries:   cfg.MaxRetries,
 		retryWaitMin: cfg.RetryWaitMin,
 		retryWaitMax: cfg.RetryWaitMax,
-	}
-	if client.http == nil {
-		client.http = http.DefaultClient
 	}
 	switch {
 	case client.maxRetries == 0:
@@ -216,17 +214,11 @@ func (c *Client) send(ctx context.Context, r request, payload []byte) (int, http
 		req.Header.Set("User-Agent", c.userAgent)
 	}
 
-	resp, err := c.http.Do(req)
+	status, header, body, err := c.exchange.do(ctx, req)
 	if err != nil {
 		return 0, nil, nil, fmt.Errorf("viya: %s %s: %w", r.method, r.path, err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
-	if err != nil {
-		return 0, nil, nil, fmt.Errorf("viya: reading response of %s %s: %w", r.method, r.path, err)
-	}
-	return resp.StatusCode, resp.Header, body, nil
+	return status, header, body, nil
 }
 
 // shouldRetry reports whether a failed exchange is worth repeating.
@@ -234,11 +226,13 @@ func (c *Client) send(ctx context.Context, r request, payload []byte) (int, http
 // HTTP 429 and 503 mean the service refused the request before acting on it,
 // so they are retried for every method. Gateway errors and transport errors
 // leave the outcome unknown, so they are retried only for idempotent methods.
+// An exchange that reached its time limit is not retried: a deployment that
+// stays silent that long would only make the caller wait several times over.
 func shouldRetry(method string, status int, err error) bool {
 	idempotent := method != http.MethodPost && method != http.MethodPatch
 
 	if err != nil {
-		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, errNoResponse) {
 			return false
 		}
 		return idempotent
