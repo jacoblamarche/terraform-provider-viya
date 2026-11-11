@@ -80,6 +80,24 @@ Requirements: [Go](https://go.dev/doc/install) 1.27 or later,
 | `make docs` | Regenerates `docs/` from the schemas and `examples/` |
 | `make mock` | Serves the fake Viya deployment on `http://127.0.0.1:8080` |
 
+### Releasing
+
+1. In `CHANGELOG.md`, rename the `[Unreleased]` section to the new version and
+   date, for example `## [0.1.0] - 2026-11-12`, and add an empty
+   `[Unreleased]` section above it. Commit this on `main`.
+2. Tag that commit and push the tag:
+
+   ```shell
+   git tag v0.1.0
+   git push origin v0.1.0
+   ```
+
+The release workflow then checks that the tag is on `main` and that
+`CHANGELOG.md` has a section for the version, runs the tests, and publishes a
+GitHub release with signed binaries for Linux, Windows and macOS on amd64 and
+arm64. It needs two repository secrets: `GPG_PRIVATE_KEY`, the armored private
+key that signs the checksums, and `PASSPHRASE`, its passphrase.
+
 ### Testing without a Viya deployment
 
 The acceptance tests run real Terraform plans and applies against

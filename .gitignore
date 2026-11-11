@@ -1,6 +1,7 @@
 # Binaries
 /terraform-provider-viya
 /viya-mock
+/dist/
 *.exe
 *.test
 *.out
