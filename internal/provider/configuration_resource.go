@@ -76,6 +76,11 @@ func (r *configurationResource) Schema(_ context.Context, _ resource.SchemaReque
 			"Properties that are in neither `properties` nor `sensitive_properties` keep the value that " +
 			"they have in SAS Viya, and changes made to them outside Terraform are not reported. " +
 			"Removing a property from the configuration stops managing it; it does not reset its value.\n\n" +
+			"## Importing\n\n" +
+			"An imported instance has no managed property. SAS Viya returns passwords in clear text, so " +
+			"the import does not copy any value into the state. Write the properties to manage in the " +
+			"configuration: the first plan shows them as added, and applying them changes nothing in " +
+			"SAS Viya if the values are the same.\n\n" +
 			"## Destroying\n\n" +
 			"Destroying the resource deletes the instance only if Terraform created it. An adopted " +
 			"instance is left in place with its current values, because a service may not work without " +
@@ -132,8 +137,8 @@ func (r *configurationResource) Schema(_ context.Context, _ resource.SchemaReque
 				Sensitive:   true,
 				ElementType: types.StringType,
 				MarkdownDescription: "Secret properties to set on the instance, such as a password. " +
-					"They are written to SAS Viya but never read back, because SAS Viya does not return " +
-					"secrets in clear text: a secret changed outside Terraform is not detected. " +
+					"They are compared with the values in SAS Viya like the other properties, so a " +
+					"secret changed outside Terraform shows in the plan, but their values never do. " +
 					"A property cannot be in both `properties` and `sensitive_properties`.",
 			},
 			"adopted": schema.BoolAttribute{
@@ -432,20 +437,18 @@ func (r *configurationResource) Read(ctx context.Context, req resource.ReadReque
 		state.Name = types.StringValue(name)
 	}
 
-	switch {
-	case imported:
+	if imported {
+		// Properties are left empty rather than copied from the instance:
+		// SAS Viya returns passwords in clear text, and properties is not a
+		// sensitive attribute. The configuration names what to manage.
 		state.Adopted = types.BoolValue(true)
-		// Show every property, so that the configuration can be written
-		// from what the instance holds. Secrets arrive masked by SAS Viya.
-		values := make(map[string]attr.Value, len(configuration.Properties))
-		for name, value := range configuration.Properties {
-			if name == configurationNameProperty || value == nil {
-				continue
-			}
-			values[name] = naturalPropertyValue(value)
-		}
-		state.Properties = propertiesValue(ctx, values, state.Properties)
-	case !state.Properties.IsNull():
+		state.Properties = types.DynamicNull()
+		state.SensitiveProperties = types.MapNull(types.StringType)
+		resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
+		return
+	}
+
+	if !state.Properties.IsNull() {
 		// Refresh only the properties that Terraform manages.
 		managed, _ := propertyValues(state.Properties)
 		values := make(map[string]attr.Value, len(managed))
@@ -459,8 +462,18 @@ func (r *configurationResource) Read(ctx context.Context, req resource.ReadReque
 		}
 		state.Properties = propertiesValue(ctx, values, state.Properties)
 	}
-	// sensitive_properties is deliberately left as it is: SAS Viya does not
-	// return secrets, so there is nothing to compare them with.
+	if !state.SensitiveProperties.IsNull() {
+		secrets := make(map[string]attr.Value, len(state.SensitiveProperties.Elements()))
+		for name := range state.SensitiveProperties.Elements() {
+			value, present := configuration.Properties[name]
+			if !present || value == nil {
+				// Removed outside Terraform: the plan will set it again.
+				continue
+			}
+			secrets[name] = propertyFromAPI(value, types.StringValue(""))
+		}
+		state.SensitiveProperties = types.MapValueMust(types.StringType, secrets)
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }

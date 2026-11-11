@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/acctest"
@@ -161,8 +162,9 @@ func TestAccConfiguration_createsNewInstance(t *testing.T) {
 				ResourceName:      testAccConfigurationAddress,
 				ImportState:       true,
 				ImportStateVerify: true,
-				// An imported instance counts as adopted, whoever created it.
-				ImportStateVerifyIgnore: []string{"adopted"},
+				// An imported instance counts as adopted, whoever created it,
+				// and manages no property until the configuration names some.
+				ImportStateVerifyIgnore: []string{"adopted", "properties"},
 			},
 		},
 	})
@@ -343,7 +345,6 @@ resource "viya_configuration" "test" {
 				),
 			},
 			{
-				// The secret is never read back, so it causes no difference.
 				Config: config("ldap.bank.example", secret),
 				ConfigPlanChecks: resource.ConfigPlanChecks{
 					PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
@@ -381,9 +382,27 @@ resource "viya_configuration" "test" {
 				}),
 			},
 			{
-				// Terraform stops managing the secret. An update of another
-				// property must not overwrite it with the masked value that
-				// Viya returns.
+				// A secret changed outside Terraform is reported too.
+				Config: config("ldap.bank.example", secret),
+				Check: func(*terraform.State) error {
+					mock.SetConfigurationProperty(ldap.ID, "password", "changed-by-hand")
+					return nil
+				},
+				ExpectNonEmptyPlan: true,
+			},
+			{
+				Config: config("ldap.bank.example", secret),
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{
+						plancheck.ExpectResourceAction(testAccConfigurationAddress, plancheck.ResourceActionUpdate),
+					},
+				},
+				Check: checkStored(map[string]any{"password": "new-ldap-password"}),
+			},
+			{
+				// Terraform stops managing the secret. Updating another
+				// property writes back the password that Viya returned, so
+				// it keeps its value.
 				Config: config("ldap2.bank.example", ""),
 				Check: checkStored(map[string]any{
 					"host":     "ldap2.bank.example",
@@ -590,6 +609,47 @@ resource "viya_configuration" "test" {
 			})
 		})
 	}
+}
+
+func TestAccConfiguration_importCopiesNoValue(t *testing.T) {
+	env := newTestAccEnv(t)
+	mock := requireMock(t, env)
+	ldap := seeded(t, mock, definitionLDAP, "")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: env.ProviderConfig + fmt.Sprintf(`
+resource "viya_configuration" "test" {
+  definition = %q
+  services   = ["identities"]
+  properties = { host = "ldap.example.com" }
+}
+`, definitionLDAP),
+				ResourceName:  testAccConfigurationAddress,
+				ImportState:   true,
+				ImportStateId: ldap.ID,
+				// SAS Viya returns the LDAP password in clear text: none of
+				// the instance's values may reach the state.
+				ImportStateCheck: func(states []*terraform.InstanceState) error {
+					if len(states) != 1 {
+						return fmt.Errorf("imported %d instances, want 1", len(states))
+					}
+					attributes := states[0].Attributes
+					for name, value := range attributes {
+						if strings.Contains(value, "initial-ldap-password") {
+							return fmt.Errorf("attribute %q holds the LDAP password", name)
+						}
+					}
+					if attributes["definition"] != definitionLDAP || attributes["adopted"] != "true" {
+						return fmt.Errorf("imported attributes = %v", attributes)
+					}
+					return nil
+				},
+			},
+		},
+	})
 }
 
 func TestAccConfiguration_sendsIfMatch(t *testing.T) {

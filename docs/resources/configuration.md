@@ -9,6 +9,8 @@ description: |-
   SAS Viya creates default instances for many definitions. When an instance already exists for the same definition, services and name, the resource takes it over and applies the configured properties to it, instead of creating a second one. The adopted attribute tells which of the two happened.
   Only the listed properties are managed
   Properties that are in neither properties nor sensitive_properties keep the value that they have in SAS Viya, and changes made to them outside Terraform are not reported. Removing a property from the configuration stops managing it; it does not reset its value.
+  Importing
+  An imported instance has no managed property. SAS Viya returns passwords in clear text, so the import does not copy any value into the state. Write the properties to manage in the configuration: the first plan shows them as added, and applying them changes nothing in SAS Viya if the values are the same.
   Destroying
   Destroying the resource deletes the instance only if Terraform created it. An adopted instance is left in place with its current values, because a service may not work without it; Terraform reports a warning and stops managing it.
 ---
@@ -26,6 +28,10 @@ SAS Viya creates default instances for many definitions. When an instance alread
 ## Only the listed properties are managed
 
 Properties that are in neither `properties` nor `sensitive_properties` keep the value that they have in SAS Viya, and changes made to them outside Terraform are not reported. Removing a property from the configuration stops managing it; it does not reset its value.
+
+## Importing
+
+An imported instance has no managed property. SAS Viya returns passwords in clear text, so the import does not copy any value into the state. Write the properties to manage in the configuration: the first plan shows them as added, and applying them changes nothing in SAS Viya if the values are the same.
 
 ## Destroying
 
@@ -83,7 +89,7 @@ resource "viya_configuration" "ldap_connection" {
 
 - `name` (String) Name of the instance, for the definitions that allow several instances per service and tell them apart with a `name` property. For example, `sas.compute.server` has the instances `autoexec_code` and `configuration_options`. Leave it unset for the other definitions. Changing it forces a new resource.
 - `properties` (Dynamic) Properties to set on the instance, as an object whose values are strings, numbers or booleans. Use the property names of the definition, as shown by SAS Environment Manager or by `sas-viya configuration configurations show`.
-- `sensitive_properties` (Map of String, Sensitive) Secret properties to set on the instance, such as a password. They are written to SAS Viya but never read back, because SAS Viya does not return secrets in clear text: a secret changed outside Terraform is not detected. A property cannot be in both `properties` and `sensitive_properties`.
+- `sensitive_properties` (Map of String, Sensitive) Secret properties to set on the instance, such as a password. They are compared with the values in SAS Viya like the other properties, so a secret changed outside Terraform shows in the plan, but their values never do. A property cannot be in both `properties` and `sensitive_properties`.
 
 ### Read-Only
 
