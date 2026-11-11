@@ -1,0 +1,92 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go mod download
+      - run: go build ./...
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.15.0
+
+  generate:
+    name: Generated files are up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - run: go mod tidy
+      - run: make docs
+      - name: Fail if generation changed anything
+        run: |
+          git diff --exit-code || {
+            echo "::error::Run 'go mod tidy' and 'make docs', then commit the result."
+            exit 1
+          }
+
+  test:
+    name: Tests (${{ matrix.engine }} ${{ matrix.version }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The oldest Terraform release the provider is tested with, the
+          # newest one, and the newest OpenTofu release.
+          - engine: terraform
+            version: "1.5.*"
+          - engine: terraform
+            version: latest
+          - engine: opentofu
+            version: latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: hashicorp/setup-terraform@v3
+        if: matrix.engine == 'terraform'
+        with:
+          terraform_version: ${{ matrix.version }}
+          terraform_wrapper: false
+      - uses: opentofu/setup-opentofu@v1
+        if: matrix.engine == 'opentofu'
+        with:
+          tofu_version: ${{ matrix.version }}
+          tofu_wrapper: false
+      - name: Point the test framework at OpenTofu
+        if: matrix.engine == 'opentofu'
+        run: |
+          echo "TF_ACC_TERRAFORM_PATH=$(command -v tofu)" >> "$GITHUB_ENV"
+          echo "TF_ACC_PROVIDER_NAMESPACE=hashicorp" >> "$GITHUB_ENV"
+          echo "TF_ACC_PROVIDER_HOST=registry.opentofu.org" >> "$GITHUB_ENV"
+      # The acceptance tests run against the in-memory mock: no Viya
+      # deployment and no secret is needed.
+      - run: make testacc

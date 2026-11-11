@@ -1,0 +1,27 @@
+# Binaries
+/terraform-provider-viya
+/viya-mock
+*.exe
+*.test
+*.out
+
+# Terraform working files
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfvars
+crash.log
+terraform.tfplan
+
+# Local environment: never commit credentials
+.env
+.env.*
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+CLAUDE.md
