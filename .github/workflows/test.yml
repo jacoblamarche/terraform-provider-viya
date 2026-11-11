@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_wrapper: false
       - run: go mod tidy
@@ -71,7 +71,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         if: matrix.engine == 'terraform'
         with:
           terraform_version: ${{ matrix.version }}
