@@ -60,7 +60,8 @@ through the environment rather than in configuration files.
 | Client credentials (recommended for automation) | `client_id`, `client_secret` | `VIYA_CLIENT_ID`, `VIYA_CLIENT_SECRET` |
 | Access token obtained out of band (not renewed) | `access_token` | `VIYA_ACCESS_TOKEN` |
 
-The endpoint can be set with `VIYA_ENDPOINT`. See the
+The endpoint can be set with `VIYA_ENDPOINT`, and must use HTTPS. Supplying
+both an access token and a client is an error. See the
 [provider documentation](docs/index.md) for details.
 
 ## Development

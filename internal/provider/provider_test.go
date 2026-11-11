@@ -119,6 +119,21 @@ func TestAccProvider_configurationErrors(t *testing.T) {
 			config: `provider "viya" { endpoint = "https://viya.example.com" }`,
 			want:   "Missing Viya credentials",
 		},
+		"access token and OAuth client together": {
+			config: `provider "viya" {
+  endpoint     = "https://viya.example.com"
+  access_token = "t"
+  client_id    = "c"
+}`,
+			want: "Conflicting Viya credentials",
+		},
+		"plain http to a remote host": {
+			config: `provider "viya" {
+  endpoint     = "http://viya.example.com"
+  access_token = "t"
+}`,
+			want: `must use https`,
+		},
 		"endpoint that is not a URL": {
 			config: `provider "viya" {
   endpoint     = "viya.example.com"
@@ -139,6 +154,25 @@ func TestAccProvider_configurationErrors(t *testing.T) {
 			})
 		})
 	}
+}
+
+func TestAccProvider_conflictAcrossArgumentsAndEnvironment(t *testing.T) {
+	clearProviderEnv(t)
+	// A client left in the environment must not be silently overridden by
+	// a token in the configuration, nor the other way around.
+	t.Setenv(envClientID, "c")
+	t.Setenv(envClientSecret, "s")
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config: `provider "viya" {
+  endpoint     = "https://viya.example.com"
+  access_token = "t"
+}` + testAccCustomGroupForProviderConfig,
+			ExpectError: regexp.MustCompile("Conflicting Viya credentials"),
+		}},
+	})
 }
 
 func TestAccProvider_environmentVariables(t *testing.T) {

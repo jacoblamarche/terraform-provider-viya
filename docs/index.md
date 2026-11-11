@@ -41,7 +41,7 @@ provider "viya" {
 
 ### Optional
 
-- `access_token` (String, Sensitive) OAuth2 access token. When set, the other credentials are ignored. Can also be set with the `VIYA_ACCESS_TOKEN` environment variable.
+- `access_token` (String, Sensitive) OAuth2 access token. It cannot be combined with `client_id` and `client_secret`. Can also be set with the `VIYA_ACCESS_TOKEN` environment variable.
 - `client_id` (String) ID of an OAuth2 client registered in SAS Logon Manager. Can also be set with the `VIYA_CLIENT_ID` environment variable.
 - `client_secret` (String, Sensitive) Secret of the OAuth2 client. Can also be set with the `VIYA_CLIENT_SECRET` environment variable.
-- `endpoint` (String) Base URL of the SAS Viya deployment, for example `https://viya.example.com`. Can also be set with the `VIYA_ENDPOINT` environment variable.
+- `endpoint` (String) Base URL of the SAS Viya deployment, for example `https://viya.example.com`. It must use HTTPS, except for `localhost`. Can also be set with the `VIYA_ENDPOINT` environment variable.

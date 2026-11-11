@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -57,22 +58,16 @@ type Client struct {
 
 // NewClient returns a Client for the given configuration.
 func NewClient(cfg Config) (*Client, error) {
-	if cfg.Endpoint == "" {
-		return nil, errors.New("viya: endpoint is required")
-	}
-	parsed, err := url.Parse(cfg.Endpoint)
+	endpoint, err := normalizeEndpoint(cfg.Endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("viya: invalid endpoint: %w", err)
-	}
-	if (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
-		return nil, fmt.Errorf("viya: endpoint %q must be an http(s) URL with a host", cfg.Endpoint)
+		return nil, err
 	}
 	if cfg.TokenSource == nil {
 		return nil, errors.New("viya: a token source is required")
 	}
 
 	client := &Client{
-		endpoint:     strings.TrimRight(cfg.Endpoint, "/"),
+		endpoint:     endpoint,
 		tokens:       cfg.TokenSource,
 		http:         cfg.HTTPClient,
 		userAgent:    cfg.UserAgent,
@@ -96,6 +91,35 @@ func NewClient(cfg Config) (*Client, error) {
 		client.retryWaitMax = defaultMaxRetryWait
 	}
 	return client, nil
+}
+
+// normalizeEndpoint validates the base URL of a deployment and removes its
+// trailing slash. Plain HTTP is accepted only for a loopback address:
+// anywhere else it would send tokens and passwords over the network in
+// clear text.
+func normalizeEndpoint(endpoint string) (string, error) {
+	if endpoint == "" {
+		return "", errors.New("viya: endpoint is required")
+	}
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return "", fmt.Errorf("viya: invalid endpoint: %w", err)
+	}
+	if parsed.Host == "" || (parsed.Scheme != "https" && parsed.Scheme != "http") {
+		return "", fmt.Errorf("viya: endpoint %q must be an https URL with a host", endpoint)
+	}
+	if parsed.Scheme == "http" && !isLoopback(parsed.Hostname()) {
+		return "", fmt.Errorf("viya: endpoint %q must use https: plain http is accepted only for localhost", endpoint)
+	}
+	return strings.TrimRight(endpoint, "/"), nil
+}
+
+func isLoopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 type request struct {

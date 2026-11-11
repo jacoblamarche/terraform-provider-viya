@@ -62,12 +62,13 @@ func (p *viyaProvider) Schema(_ context.Context, _ provider.SchemaRequest, resp 
 			"endpoint": schema.StringAttribute{
 				Optional: true,
 				MarkdownDescription: "Base URL of the SAS Viya deployment, for example `https://viya.example.com`. " +
-					"Can also be set with the `" + envEndpoint + "` environment variable.",
+					"It must use HTTPS, except for `localhost`. Can also be set with the `" + envEndpoint + "` environment variable.",
 			},
 			"access_token": schema.StringAttribute{
 				Optional:  true,
 				Sensitive: true,
-				MarkdownDescription: "OAuth2 access token. When set, the other credentials are ignored. " +
+				MarkdownDescription: "OAuth2 access token. It cannot be combined with `client_id` and " +
+					"`client_secret`. " +
 					"Can also be set with the `" + envAccessToken + "` environment variable.",
 			},
 			"client_id": schema.StringAttribute{
@@ -146,6 +147,14 @@ func (p *viyaProvider) Configure(ctx context.Context, req provider.ConfigureRequ
 			"Missing Viya credentials",
 			"Set either access_token, or client_id and client_secret. The matching environment "+
 				"variables are "+envAccessToken+", "+envClientID+" and "+envClientSecret+".",
+		)
+	}
+	if settings.AccessToken != "" && (settings.ClientID != "" || settings.ClientSecret != "") {
+		resp.Diagnostics.AddError(
+			"Conflicting Viya credentials",
+			"Both an access token and an OAuth client were supplied, through the provider arguments or "+
+				"the "+envAccessToken+", "+envClientID+" and "+envClientSecret+" environment variables. "+
+				"Keep only one of the two.",
 		)
 	}
 	if resp.Diagnostics.HasError() {

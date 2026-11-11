@@ -60,6 +60,7 @@ func TestNewClient_validatesConfig(t *testing.T) {
 		"missing endpoint":     {TokenSource: viya.StaticToken("t")},
 		"endpoint without URL": {Endpoint: "viya.example.com", TokenSource: viya.StaticToken("t")},
 		"unsupported scheme":   {Endpoint: "ftp://viya.example.com", TokenSource: viya.StaticToken("t")},
+		"plain http, remote":   {Endpoint: "http://viya.example.com", TokenSource: viya.StaticToken("t")},
 		"missing token source": {Endpoint: "https://viya.example.com"},
 	}
 	for name, cfg := range tests {
@@ -69,6 +70,32 @@ func TestNewClient_validatesConfig(t *testing.T) {
 				t.Fatal("NewClient succeeded, want an error")
 			}
 		})
+	}
+}
+
+func TestNewClient_acceptsHTTPSAndLoopbackHTTP(t *testing.T) {
+	t.Parallel()
+
+	for _, endpoint := range []string{
+		"https://viya.example.com",
+		"https://viya.example.com/",
+		"http://localhost:8080",
+		"http://127.0.0.1:8080",
+		"http://[::1]:8080",
+	} {
+		if _, err := viya.NewClient(viya.Config{Endpoint: endpoint, TokenSource: viya.StaticToken("t")}); err != nil {
+			t.Errorf("NewClient(%q): %v", endpoint, err)
+		}
+	}
+}
+
+func TestNewOAuthTokenSource_rejectsPlainHTTP(t *testing.T) {
+	t.Parallel()
+
+	// The token request carries the client secret.
+	_, err := viya.NewOAuthTokenSource(viya.OAuthConfig{Endpoint: "http://viya.example.com", ClientID: "c"})
+	if err == nil || !strings.Contains(err.Error(), "must use https") {
+		t.Errorf("NewOAuthTokenSource error = %v, want it to require https", err)
 	}
 }
 

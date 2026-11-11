@@ -65,16 +65,17 @@ type oauthTokenSource struct {
 
 // NewOAuthTokenSource returns a TokenSource backed by SAS Logon Manager.
 func NewOAuthTokenSource(cfg OAuthConfig) (TokenSource, error) {
-	if cfg.Endpoint == "" {
-		return nil, errors.New("viya: OAuth endpoint is required")
+	endpoint, err := normalizeEndpoint(cfg.Endpoint)
+	if err != nil {
+		return nil, err
 	}
+	cfg.Endpoint = endpoint
 	if cfg.ClientID == "" {
 		return nil, errors.New("viya: OAuth client ID is required")
 	}
 	if cfg.HTTPClient == nil {
 		cfg.HTTPClient = http.DefaultClient
 	}
-	cfg.Endpoint = strings.TrimRight(cfg.Endpoint, "/")
 	return &oauthTokenSource{cfg: cfg, now: time.Now}, nil
 }
 
