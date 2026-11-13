@@ -45,7 +45,9 @@ verify.
 | Token endpoint: grants, parameters, response fields ([SAS Logon specification](https://developer.sas.com/rest-apis/SASLogon)) | Documented |
 | Groups: `POST` → 201 with `Location`; `GET` → 200 with `application/vnd.sas.identity.group+json`; `PUT` → 200; `POST` of an existing ID → 409; `DELETE` → 204, then `GET` → 404 | Verified |
 | Groups: no `ETag` and no `Last-Modified`, on creation or on read | Verified |
-| Groups: the `id`/`name`/`description`/`state` body | Verified |
+| Groups: the `id` and `name` fields | Verified |
+| Groups: `description`, cleared by a `PUT` without it | **To verify** |
+| Groups: `state`, `active` when absent | **To verify** |
 | Groups: `providerId`, `local` for custom groups and another value for groups read from LDAP or SCIM | **To verify** |
 | Definitions: `GET /configuration/definitions/{name}` → 404; the list ignores `filter`; a link of each definition names its instance media type, with its version | Verified |
 | Configurations: `POST` of a single instance → 201 with a weak `ETag` and `Location` | Verified |
