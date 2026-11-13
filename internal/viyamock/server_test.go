@@ -297,6 +297,22 @@ func TestRemoveGroup(t *testing.T) {
 	}
 }
 
+func TestAddGroup(t *testing.T) {
+	t.Parallel()
+	mock, server := start(t)
+	bearer := token(t, server.URL)
+
+	mock.AddGroup(viyamock.Group{ID: "Sales", Name: "Sales", ProviderID: "ldap"})
+
+	var group viyamock.Group
+	if resp := call(t, http.MethodGet, server.URL+"/identities/groups/Sales", bearer, "", nil, &group); resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if group.ProviderID != "ldap" || group.State != "active" || len(group.Links) == 0 {
+		t.Errorf("group = %+v, want the LDAP provider kept and the defaults applied", group)
+	}
+}
+
 const ldapMediaType = "application/vnd.sas.configuration.config.sas.identities.providers.ldap.connection+json;version=1"
 
 // ldapConnection returns the ID of the seeded LDAP connection instance.

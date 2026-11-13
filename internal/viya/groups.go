@@ -20,6 +20,9 @@ const (
 	GroupStateInactive = "inactive"
 )
 
+// providerIDLocal is the provider of the groups that SAS Viya stores itself.
+const providerIDLocal = "local"
+
 // Group is a group of the Viya Identities service.
 //
 // The Identities service sends no entity tag for groups, so updates cannot
@@ -31,6 +34,13 @@ type Group struct {
 	State       string `json:"state,omitempty"`
 	// ProviderID is "local" for custom groups. It is set by the service.
 	ProviderID string `json:"providerId,omitempty"`
+}
+
+// IsCustom reports whether the group is a custom group, stored by SAS Viya
+// itself, rather than a group read from an identity provider such as LDAP or
+// SCIM.
+func (g *Group) IsCustom() bool {
+	return g.ProviderID == providerIDLocal
 }
 
 // CreateGroup creates a custom group and returns it as stored by Viya.

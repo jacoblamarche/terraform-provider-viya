@@ -4,14 +4,14 @@ page_title: "viya_custom_group Resource - viya"
 subcategory: ""
 description: |-
   Manages a custom group in the SAS Viya Identities service.
-  Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from an identity provider such as LDAP or SCIM. They are typically used as principals of authorization rules.
+  Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from an identity provider such as LDAP or SCIM. They are typically used as principals of authorization rules. A group read from an identity provider cannot be imported.
 ---
 
 # viya_custom_group (Resource)
 
 Manages a custom group in the SAS Viya Identities service.
 
-Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from an identity provider such as LDAP or SCIM. They are typically used as principals of authorization rules.
+Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from an identity provider such as LDAP or SCIM. They are typically used as principals of authorization rules. A group read from an identity provider cannot be imported.
 
 ## Example Usage
 

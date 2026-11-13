@@ -46,6 +46,7 @@ verify.
 | Groups: `POST` → 201 with `Location`; `GET` → 200 with `application/vnd.sas.identity.group+json`; `PUT` → 200; `POST` of an existing ID → 409; `DELETE` → 204, then `GET` → 404 | Verified |
 | Groups: no `ETag` and no `Last-Modified`, on creation or on read | Verified |
 | Groups: the `id`/`name`/`description`/`state` body | Verified |
+| Groups: `providerId`, `local` for custom groups and another value for groups read from LDAP or SCIM | **To verify** |
 | Definitions: `GET /configuration/definitions/{name}` → 404; the list ignores `filter`; a link of each definition names its instance media type, with its version | Verified |
 | Configurations: `POST` of a single instance → 201 with a weak `ETag` and `Location` | Verified |
 | Configurations: `PUT` with the weak `ETag` in `If-Match` → 200 with the instance and a new `ETag`; a stale one → 412; no `If-Match` → 204 without body | Verified |
@@ -84,6 +85,8 @@ Tests can also reach behind the API:
 - `InjectFault` makes the next matching requests fail with a given status,
   after an optional delay, to exercise retries and time limits.
 - `RevokeTokens` invalidates every token, to exercise re-authentication.
+- `AddGroup` stores a group as if SAS Viya had read it from an identity
+  provider such as LDAP.
 - `RemoveGroup` deletes a group as if someone had done it outside Terraform.
 - `AddConfiguration`, `SetConfigurationProperty` and `RemoveConfiguration`
   change configuration instances behind the API; `Configuration` and

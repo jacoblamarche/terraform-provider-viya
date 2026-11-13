@@ -48,7 +48,7 @@ func (r *customGroupResource) Schema(_ context.Context, _ resource.SchemaRequest
 		MarkdownDescription: "Manages a custom group in the SAS Viya Identities service.\n\n" +
 			"Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from " +
 			"an identity provider such as LDAP or SCIM. They are typically used as principals of " +
-			"authorization rules.",
+			"authorization rules. A group read from an identity provider cannot be imported.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Required: true,
@@ -156,6 +156,16 @@ func (r *customGroupResource) Read(ctx context.Context, req resource.ReadRequest
 			return
 		}
 		resp.Diagnostics.AddError("Unable to read group", err.Error())
+		return
+	}
+	if !group.IsCustom() {
+		// Typically an import of an LDAP or SCIM group by mistake. Updating
+		// or deleting such a group from Terraform makes no sense.
+		resp.Diagnostics.AddError(
+			"Not a custom group",
+			fmt.Sprintf("The group %q is read from the identity provider %q, not stored by SAS Viya. "+
+				"viya_custom_group only manages custom groups.", group.ID, group.ProviderID),
+		)
 		return
 	}
 
