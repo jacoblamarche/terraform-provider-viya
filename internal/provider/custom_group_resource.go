@@ -47,7 +47,10 @@ func (r *customGroupResource) Schema(_ context.Context, _ resource.SchemaRequest
 		MarkdownDescription: "Manages a custom group in the SAS Viya Identities service.\n\n" +
 			"Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from " +
 			"an identity provider such as LDAP or SCIM. They are typically used as principals of " +
-			"authorization rules. A group read from an identity provider cannot be imported.",
+			"authorization rules. A group read from an identity provider cannot be imported.\n\n" +
+			"The resource does not manage the members of the group.\n\n" +
+			"~> SAS Viya comes with predefined custom groups, such as `SASAdministrators`. Do not " +
+			"import them: Terraform would delete them when the resource is destroyed or its `id` changes.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Required: true,
