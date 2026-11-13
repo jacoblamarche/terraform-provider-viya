@@ -36,10 +36,6 @@ resource "viya_custom_group" "data_scientists" {
 - `description` (String) Description of the group.
 - `state` (String) State of the group: `active` or `inactive`. Defaults to `active`.
 
-### Read-Only
-
-- `provider_id` (String) Identifier of the identity provider that holds the group. It is `local` for custom groups.
-
 ## Import
 
 Import is supported using the following syntax:

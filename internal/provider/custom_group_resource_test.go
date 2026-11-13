@@ -88,7 +88,6 @@ func TestAccCustomGroup_lifecycle(t *testing.T) {
 					resource.TestCheckResourceAttr(testAccCustomGroupAddress, "name", "Analysts"),
 					resource.TestCheckNoResourceAttr(testAccCustomGroupAddress, "description"),
 					resource.TestCheckResourceAttr(testAccCustomGroupAddress, "state", "active"),
-					resource.TestCheckResourceAttr(testAccCustomGroupAddress, "provider_id", "local"),
 					testAccCheckCustomGroupInViya(env, id, viya.Group{Name: "Analysts", State: "active"}),
 				),
 			},

@@ -32,7 +32,6 @@ type customGroupModel struct {
 	Name        types.String `tfsdk:"name"`
 	Description types.String `tfsdk:"description"`
 	State       types.String `tfsdk:"state"`
-	ProviderID  types.String `tfsdk:"provider_id"`
 }
 
 func newCustomGroupResource() resource.Resource {
@@ -85,14 +84,6 @@ func (r *customGroupResource) Schema(_ context.Context, _ resource.SchemaRequest
 					"Defaults to `active`.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(viya.GroupStateActive, viya.GroupStateInactive),
-				},
-			},
-			"provider_id": schema.StringAttribute{
-				Computed: true,
-				MarkdownDescription: "Identifier of the identity provider that holds the group. " +
-					"It is `local` for custom groups.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
@@ -220,7 +211,6 @@ func customGroupModelFromAPI(group *viya.Group) customGroupModel {
 		Name:        types.StringValue(group.Name),
 		Description: types.StringNull(),
 		State:       types.StringValue(group.State),
-		ProviderID:  types.StringValue(group.ProviderID),
 	}
 	if group.Description != "" {
 		model.Description = types.StringValue(group.Description)
