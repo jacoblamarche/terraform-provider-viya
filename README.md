@@ -82,21 +82,24 @@ Requirements: [Go](https://go.dev/doc/install) 1.27 or later,
 
 ### Releasing
 
-1. In `CHANGELOG.md`, rename the `[Unreleased]` section to the new version and
-   date, for example `## [0.1.0] - 2026-11-12`, and add an empty
-   `[Unreleased]` section above it. Commit this on `main`.
-2. Tag that commit and push the tag:
+Releases are cut by [Release Please](https://github.com/googleapis/release-please).
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
+`feat:` and `fix:` commits appear in `CHANGELOG.md`, and `!` marks a breaking
+change.
 
-   ```shell
-   git tag v0.1.0
-   git push origin v0.1.0
-   ```
+On every push to `main`, the release workflow opens or updates a release pull
+request that bumps the version and updates `CHANGELOG.md`. Merging it tags the
+commit and creates a draft GitHub release. The workflow then runs the tests,
+attaches signed binaries for Linux, Windows and macOS on amd64 and arm64, and
+publishes the release.
 
-The release workflow then checks that the tag is on `main` and that
-`CHANGELOG.md` has a section for the version, runs the tests, and publishes a
-GitHub release with signed binaries for Linux, Windows and macOS on amd64 and
-arm64. It needs two repository secrets: `GPG_PRIVATE_KEY`, the armored private
-key that signs the checksums, and `PASSPHRASE`, its passphrase.
+Versions are alpha pre-releases (`0.1.0-alpha.N`) until `prerelease` is turned
+off in `release-please-config.json`.
+
+The workflow needs two repository secrets, `GPG_PRIVATE_KEY`, the armored
+private key that signs the checksums, and `PASSPHRASE`, its passphrase. It also
+needs the setting that allows GitHub Actions to create pull requests
+(Settings → Actions → General).
 
 ### Testing without a Viya deployment
 

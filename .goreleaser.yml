@@ -39,11 +39,15 @@ signs:
       - --detach-sign
       - "${artifact}"
 
+# Release Please creates the release as a draft, with its notes; GoReleaser
+# attaches the binaries and publishes it.
 release:
+  use_existing_draft: true
+  mode: keep-existing
+  prerelease: auto
   extra_files:
     - glob: terraform-registry-manifest.json
       name_template: "{{ .ProjectName }}_{{ .Version }}_manifest.json"
 
-# Release notes come from CHANGELOG.md, see the release workflow.
 changelog:
   disable: true
