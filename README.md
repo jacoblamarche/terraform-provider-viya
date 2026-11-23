@@ -6,9 +6,8 @@ deployment as code, with [Terraform](https://developer.hashicorp.com/terraform).
 > **Status: early development.** The provider is not published to the Terraform
 > Registry yet, and its resources may change without notice.
 
-> **Licence: not granted yet.** The licence of this project is being finalised.
-> Until a `LICENSE` file is published, no right to use, copy, modify or
-> distribute this code is granted.
+> **Licence:** this project is distributed under the National Bank of Canada
+> License, version 1.0. See [`LICENSE`](LICENSE).
 
 This project is not affiliated with, endorsed by, or sponsored by SAS Institute
 Inc. SAS and SAS Viya are trademarks of SAS Institute Inc. Terraform is a
