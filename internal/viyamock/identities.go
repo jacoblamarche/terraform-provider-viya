@@ -54,6 +54,26 @@ func (s *Server) Group(id string) (Group, bool) {
 	return *group, true
 }
 
+// AddGroup stores a group without going through the API, as if SAS Viya had
+// read it from an identity provider. Leave ProviderID empty for a custom group.
+func (s *Server) AddGroup(group Group) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	now := s.now().UTC().Format(timestampLayout)
+	stored := group
+	if stored.State == "" {
+		stored.State = "active"
+	}
+	if stored.ProviderID == "" {
+		stored.ProviderID = "local"
+	}
+	stored.CreationTimeStamp, stored.ModifiedTimeStamp = now, now
+	stored.Links = groupLinks(stored.ID)
+	stored.Version = 2
+	s.groups[stored.ID] = &stored
+}
+
 // RemoveGroup deletes a group without going through the API, to simulate a
 // change made outside Terraform. It reports whether the group existed.
 func (s *Server) RemoveGroup(id string) bool {

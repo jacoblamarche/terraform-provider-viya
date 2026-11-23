@@ -4,14 +4,20 @@ page_title: "viya_custom_group Resource - viya"
 subcategory: ""
 description: |-
   Manages a custom group in the SAS Viya Identities service.
-  Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from an identity provider such as LDAP or SCIM. They are typically used as principals of authorization rules.
+  Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from an identity provider such as LDAP or SCIM. They are typically used as principals of authorization rules. A group read from an identity provider cannot be imported.
+  The resource does not manage the members of the group.
+  ~> SAS Viya comes with predefined custom groups, such as SASAdministrators. Do not import them: Terraform would delete them when the resource is destroyed or its id changes.
 ---
 
 # viya_custom_group (Resource)
 
 Manages a custom group in the SAS Viya Identities service.
 
-Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from an identity provider such as LDAP or SCIM. They are typically used as principals of authorization rules.
+Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from an identity provider such as LDAP or SCIM. They are typically used as principals of authorization rules. A group read from an identity provider cannot be imported.
+
+The resource does not manage the members of the group.
+
+~> SAS Viya comes with predefined custom groups, such as `SASAdministrators`. Do not import them: Terraform would delete them when the resource is destroyed or its `id` changes.
 
 ## Example Usage
 
@@ -35,10 +41,6 @@ resource "viya_custom_group" "data_scientists" {
 
 - `description` (String) Description of the group.
 - `state` (String) State of the group: `active` or `inactive`. Defaults to `active`.
-
-### Read-Only
-
-- `provider_id` (String) Identifier of the identity provider that holds the group. It is `local` for custom groups.
 
 ## Import
 

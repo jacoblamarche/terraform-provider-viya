@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 
 	"github.com/jacoblamarche/terraform-provider-viya/internal/viya"
+	"github.com/jacoblamarche/terraform-provider-viya/internal/viyamock"
 )
 
 const testAccCustomGroupAddress = "viya_custom_group.test"
@@ -87,7 +88,6 @@ func TestAccCustomGroup_lifecycle(t *testing.T) {
 					resource.TestCheckResourceAttr(testAccCustomGroupAddress, "name", "Analysts"),
 					resource.TestCheckNoResourceAttr(testAccCustomGroupAddress, "description"),
 					resource.TestCheckResourceAttr(testAccCustomGroupAddress, "state", "active"),
-					resource.TestCheckResourceAttr(testAccCustomGroupAddress, "provider_id", "local"),
 					testAccCheckCustomGroupInViya(env, id, viya.Group{Name: "Analysts", State: "active"}),
 				),
 			},
@@ -237,6 +237,29 @@ func TestAccCustomGroup_changedOutsideTerraform(t *testing.T) {
 			},
 		},
 	})
+}
+
+func TestAccCustomGroup_importIdentityProviderGroup(t *testing.T) {
+	env := newTestAccEnv(t)
+	if env.Mock == nil {
+		t.Skip("this test needs a group read from an identity provider and only runs against the mock")
+	}
+	env.Mock.AddGroup(viyamock.Group{ID: "Sales", Name: "Sales", ProviderID: "ldap"})
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{{
+			Config:        testAccCustomGroupConfig(env, "Sales", "Sales", "", ""),
+			ResourceName:  testAccCustomGroupAddress,
+			ImportState:   true,
+			ImportStateId: "Sales",
+			ExpectError:   regexp.MustCompile(`Not a custom group[\s\S]*identity provider "ldap"`),
+		}},
+	})
+
+	if _, ok := env.Mock.Group("Sales"); !ok {
+		t.Error("the LDAP group was deleted")
+	}
 }
 
 func TestAccCustomGroup_alreadyExists(t *testing.T) {

@@ -32,7 +32,6 @@ type customGroupModel struct {
 	Name        types.String `tfsdk:"name"`
 	Description types.String `tfsdk:"description"`
 	State       types.String `tfsdk:"state"`
-	ProviderID  types.String `tfsdk:"provider_id"`
 }
 
 func newCustomGroupResource() resource.Resource {
@@ -48,7 +47,10 @@ func (r *customGroupResource) Schema(_ context.Context, _ resource.SchemaRequest
 		MarkdownDescription: "Manages a custom group in the SAS Viya Identities service.\n\n" +
 			"Custom groups are stored by SAS Viya itself, as opposed to the groups that it reads from " +
 			"an identity provider such as LDAP or SCIM. They are typically used as principals of " +
-			"authorization rules.",
+			"authorization rules. A group read from an identity provider cannot be imported.\n\n" +
+			"The resource does not manage the members of the group.\n\n" +
+			"~> SAS Viya comes with predefined custom groups, such as `SASAdministrators`. Do not " +
+			"import them: Terraform would delete them when the resource is destroyed or its `id` changes.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Required: true,
@@ -85,14 +87,6 @@ func (r *customGroupResource) Schema(_ context.Context, _ resource.SchemaRequest
 					"Defaults to `active`.",
 				Validators: []validator.String{
 					stringvalidator.OneOf(viya.GroupStateActive, viya.GroupStateInactive),
-				},
-			},
-			"provider_id": schema.StringAttribute{
-				Computed: true,
-				MarkdownDescription: "Identifier of the identity provider that holds the group. " +
-					"It is `local` for custom groups.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 		},
@@ -158,6 +152,16 @@ func (r *customGroupResource) Read(ctx context.Context, req resource.ReadRequest
 		resp.Diagnostics.AddError("Unable to read group", err.Error())
 		return
 	}
+	if !group.IsCustom() {
+		// Typically an import of an LDAP or SCIM group by mistake. Updating
+		// or deleting such a group from Terraform makes no sense.
+		resp.Diagnostics.AddError(
+			"Not a custom group",
+			fmt.Sprintf("The group %q is read from the identity provider %q, not stored by SAS Viya. "+
+				"viya_custom_group only manages custom groups.", group.ID, group.ProviderID),
+		)
+		return
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, customGroupModelFromAPI(group))...)
 }
@@ -210,7 +214,6 @@ func customGroupModelFromAPI(group *viya.Group) customGroupModel {
 		Name:        types.StringValue(group.Name),
 		Description: types.StringNull(),
 		State:       types.StringValue(group.State),
-		ProviderID:  types.StringValue(group.ProviderID),
 	}
 	if group.Description != "" {
 		model.Description = types.StringValue(group.Description)
